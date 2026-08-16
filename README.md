@@ -149,21 +149,27 @@ The Flask backend provides clean, sanitized JSON proxy routes with automatic TTL
 
 ## 🚢 Deployment
 
-### Deploy to Render
+### Deploy to Vercel (Recommended — 100% Free & No Credit Card Required)
 
-1. Push your repository to GitHub.
-2. Log into [Render](https://render.com/) and click **New Web Service**.
-3. Connect your repository.
-4. Set:
-   - **Environment**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn app:app`
+1. Push your repository to GitHub: `https://github.com/Aymanethemaster/zephyr`.
+2. Go to **[vercel.com](https://vercel.com/)** and click **Continue with GitHub** (No credit card required).
+3. Click **Add New...** ➔ **Project** ➔ Import your `zephyr` repository.
+4. Click **Deploy** — Vercel reads `vercel.json` and goes live in ~30 seconds with a free global HTTPS domain.
 
-### Deploy to Railway
+---
 
-1. Create a new project on [Railway](https://railway.app/).
-2. Select **Deploy from GitHub repo**.
-3. Railway automatically detects the `Procfile` and `requirements.txt` and deploys instantly.
+### Deploy to PythonAnywhere (100% Free & No Credit Card Required)
+
+1. Create a free account at **[pythonanywhere.com](https://www.pythonanywhere.com/)**.
+2. Open a **Bash Console** and run:
+   ```bash
+   git clone https://github.com/Aymanethemaster/zephyr.git
+   cd zephyr
+   pip install -r requirements.txt
+   ```
+3. Go to the **Web** tab ➔ **Add a new web app** ➔ Select **Flask (Python 3.10+)** and point the WSGI file to `app.py`.
+
+---
 
 ### Deploy with Docker
 
