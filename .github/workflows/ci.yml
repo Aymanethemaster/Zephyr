@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify Python Compilation & Syntax
+        run: |
+          python -m py_compile app.py
+
+      - name: Run Backend Integration & Health Tests
+        run: |
+          python -c "
+          from app import app
+          with app.test_client() as client:
+              # Test health endpoint
+              res = client.get('/api/health')
+              assert res.status_code == 200, f'Health check failed: {res.status_code}'
+              # Test main HTML template
+              res = client.get('/')
+              assert res.status_code == 200, f'Index page failed: {res.status_code}'
+              assert b'Zeph' in res.data, 'Zephyr branding missing'
+              print('All CI tests passed successfully!')
+          "
