@@ -58,7 +58,7 @@ Zero friction is the non-negotiable differentiator: no API keys for operators, n
 ## Evidence on Hand
 
 - Fully functional deployed codebase with all features listed above working end-to-end.
-- Complete Meteocons 2.0.0 distribution in `meteocons-2.0.0/` (fill + line sets, design source files).
+- 122 animated vector SVG Meteocons bundled directly in `static/icons/`.
 - No user testimonials, press, analytics, or case studies exist.
 - No logo asset beyond the inline Meteocons `overcast-day.svg` used as a brand icon.
 

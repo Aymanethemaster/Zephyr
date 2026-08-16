@@ -81,14 +81,14 @@ zephyr/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions CI automated testing pipeline
 ├── app.py                      # Flask backend proxy with in-memory TTL caching
+├── index.html                  # Semantic HTML5 SPA layout
 ├── requirements.txt            # Minimal dependencies (Flask, Requests, Gunicorn)
 ├── Procfile                    # Production PaaS process file (Render/Railway/Heroku)
+├── vercel.json                 # Vercel deployment configuration
 ├── .gitignore                  # Git ignore rules
 ├── LICENSE                     # MIT License
 ├── README.md                   # Project documentation
 ├── PRODUCT.md                  # Specifications & product context
-├── templates/
-│   └── index.html              # Semantic HTML5 SPA layout
 └── static/
     ├── css/
     │   └── style.css           # Glassmorphism design system & responsive tokens
