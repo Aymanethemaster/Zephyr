@@ -81,18 +81,28 @@ export class WeatherApi {
       if (pResp.ok) {
         const pData = await pResp.json();
         const features = pData.features || [];
-        return features.map(f => {
-          const p = f.properties || {};
-          const coords = (f.geometry && f.geometry.coordinates) || [0, 0];
-          return {
-            name: p.name || p.city || '',
-            country: p.country || '',
-            admin1: p.state || '',
-            latitude: coords[1],
-            longitude: coords[0],
-            timezone: 'auto'
-          };
-        }).filter(r => r.name);
+        const nonGeoKeys = new Set(['amenity', 'craft', 'shop', 'tourism', 'leisure']);
+        const nonGeoVals = new Set(['brewery', 'bar', 'cafe', 'pub', 'restaurant', 'hotel', 'hostel', 'nightclub', 'supermarket']);
+        return features
+          .filter(f => {
+            const p = f.properties || {};
+            if (nonGeoKeys.has(p.osm_key) && nonGeoVals.has(p.osm_value)) {
+              return false;
+            }
+            return true;
+          })
+          .map(f => {
+            const p = f.properties || {};
+            const coords = (f.geometry && f.geometry.coordinates) || [0, 0];
+            return {
+              name: p.name || p.city || '',
+              country: p.country || '',
+              admin1: p.state || '',
+              latitude: coords[1],
+              longitude: coords[0],
+              timezone: 'auto'
+            };
+          }).filter(r => r.name);
       }
     } catch (e) {}
 

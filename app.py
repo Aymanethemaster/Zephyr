@@ -115,6 +115,14 @@ def geocode():
                 p_data = p_resp.json()
                 for feat in p_data.get("features", []):
                     props = feat.get("properties", {})
+                    osm_key = props.get("osm_key", "")
+                    osm_val = props.get("osm_value", "")
+                    # Skip commercial venues (breweries, bars, cafes, shops) when searching cities
+                    if osm_key in ("amenity", "craft", "shop", "tourism", "leisure") and osm_val in (
+                        "brewery", "bar", "cafe", "pub", "restaurant", "hotel", "hostel", "nightclub", "supermarket"
+                    ):
+                        continue
+
                     coords = feat.get("geometry", {}).get("coordinates", [])
                     if len(coords) >= 2:
                         lon = round(float(coords[0]), 4)

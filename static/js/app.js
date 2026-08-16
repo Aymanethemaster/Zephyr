@@ -729,8 +729,12 @@ class WeatherApp {
     this.uvStatusEl.style.color = uvRisk.color;
     this.uvAdviceEl.textContent = uvRisk.advice;
     if (this.uvIconImg) {
-      const uvNum = Math.min(11, Math.max(1, Math.round(uvVal)));
-      this.uvIconImg.src = `/static/icons/uv-index-${uvNum}.svg`;
+      if (typeof uvVal === 'number' && uvVal < 0.5) {
+        this.uvIconImg.src = '/static/icons/uv-index.svg';
+      } else {
+        const uvNum = Math.min(11, Math.max(1, Math.round(uvVal)));
+        this.uvIconImg.src = `/static/icons/uv-index-${uvNum}.svg`;
+      }
     }
     const uvFill = document.getElementById('uv-gauge-fill');
     const uvMeter = document.getElementById('uv-meter');
