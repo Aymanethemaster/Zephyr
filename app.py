@@ -54,6 +54,8 @@ def clean_location_name(name_str):
 
 
 @app.route("/")
+@app.route("/api/index")
+@app.route("/api/index.py")
 def index():
     return render_template("index.html")
 
