@@ -88,7 +88,6 @@ zephyr/
 ├── .gitignore                  # Git ignore rules
 ├── LICENSE                     # MIT License
 ├── README.md                   # Project documentation
-├── PRODUCT.md                  # Specifications & product context
 └── static/
     ├── css/
     │   └── style.css           # Glassmorphism design system & responsive tokens
