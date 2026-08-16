@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 import re
@@ -7,7 +8,14 @@ import requests
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+    static_url_path="/static"
+)
 
 # Simple in-memory cache to reduce external latency and respect API fairness
 # Structure: { key: (expiry_timestamp, data) }
