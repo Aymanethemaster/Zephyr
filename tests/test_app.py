@@ -1,5 +1,11 @@
+import os
+import sys
 import time
 import pytest
+
+# Ensure repository root is on sys.path regardless of execution environment
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from app import app, clean_location_name, get_from_cache, set_to_cache, CACHE
 
 
