@@ -41,8 +41,8 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Aymanethemaster/zephyr.git
-cd zephyr
+git clone https://github.com/Aymanethemaster/Zephyr.git
+cd Zephyr
 ```
 
 ### 2. Set Up Virtual Environment (Recommended)
@@ -164,7 +164,7 @@ The app runs on Vercel as a **pure static site**: `vercel.json` serves `index.ht
 
 1. Push your repository to GitHub: `https://github.com/Aymanethemaster/zephyr`.
 2. Go to **[vercel.com](https://vercel.com/)** and click **Continue with GitHub** (No credit card required).
-3. Click **Add New...** ➔ **Project** ➔ Import your `zephyr` repository.
+3. Click **Add New...** ➔ **Project** ➔ Import your `Zephyr` repository.
 4. Click **Deploy** — Vercel goes live in ~30 seconds with a free global HTTPS domain.
 
 To run the full Flask backend instead, use any Python-capable host (Render, Railway, PythonAnywhere, Docker below).
@@ -176,8 +176,8 @@ To run the full Flask backend instead, use any Python-capable host (Render, Rail
 1. Create a free account at **[pythonanywhere.com](https://www.pythonanywhere.com/)**.
 2. Open a **Bash Console** and run:
    ```bash
-   git clone https://github.com/Aymanethemaster/zephyr.git
-   cd zephyr
+   git clone https://github.com/Aymanethemaster/Zephyr.git
+   cd Zephyr
    pip install -r requirements.txt
    ```
 3. Go to the **Web** tab ➔ **Add a new web app** ➔ Select **Flask (Python 3.10+)** and point the WSGI file to `app.py`.
