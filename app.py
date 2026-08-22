@@ -1,7 +1,10 @@
 import os
+import json
 import time
 import logging
 import re
+import threading
+from collections import defaultdict, deque
 from flask import Flask, render_template, request, jsonify
 import requests
 
@@ -20,34 +23,90 @@ app = Flask(
 # Simple in-memory cache to reduce external latency and respect API fairness
 # Structure: { key: (expiry_timestamp, data) }
 CACHE = {}
+CACHE_LOCK = threading.Lock()
 CACHE_TTL_WEATHER = 600       # 10 minutes
 CACHE_TTL_GEOCODING = 3600    # 1 hour
 CACHE_TTL_AQI = 900           # 15 minutes
 
-def get_from_cache(key: str):
-    if key in CACHE:
-        expiry, data = CACHE[key]
-        if time.time() < expiry:
+# Shared Open-Meteo request definition, also used by the frontend
+# (static/js/weather-api.js fetches the same file) so the proxied and
+# direct-client requests always ask for identical fields.
+PARAMS_PATH = os.path.join(BASE_DIR, "static", "js", "weather-params.json")
+
+DEFAULT_OPEN_METEO_PARAMS = {
+    "current": ["temperature_2m", "relative_humidity_2m", "apparent_temperature",
+                "is_day", "precipitation", "weather_code", "cloud_cover",
+                "pressure_msl", "surface_pressure", "wind_speed_10m",
+                "wind_direction_10m", "wind_gusts_10m", "uv_index"],
+    "hourly": ["temperature_2m", "relative_humidity_2m", "dew_point_2m",
+               "apparent_temperature", "precipitation_probability", "precipitation",
+               "weather_code", "pressure_msl", "visibility", "wind_speed_10m",
+               "wind_direction_10m", "uv_index", "is_day"],
+    "daily": ["weather_code", "temperature_2m_max", "temperature_2m_min",
+              "apparent_temperature_max", "apparent_temperature_min", "sunrise",
+              "sunset", "uv_index_max", "precipitation_sum", "precipitation_hours",
+              "precipitation_probability_max", "wind_speed_10m_max"],
+    "forecast_days": 8
+}
+
+def load_open_meteo_params():
+    try:
+        with open(PARAMS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if all(k in data for k in ("current", "hourly", "daily")):
             return data
-        else:
-            del CACHE[key]
+        logger.warning("weather-params.json is missing sections; using defaults")
+    except Exception as e:
+        logger.warning(f"Could not read {PARAMS_PATH}: {e}; using defaults")
+    return DEFAULT_OPEN_METEO_PARAMS
+
+OPEN_METEO_PARAMS = load_open_meteo_params()
+
+# Sliding-window per-IP rate limit for API proxy routes
+RATE_LIMIT_REQUESTS = 60   # requests...
+RATE_LIMIT_WINDOW = 60     # ...per this many seconds
+RATE_BUCKETS = defaultdict(deque)
+RATE_LOCK = threading.Lock()
+
+def check_rate_limit():
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    now = time.time()
+    with RATE_LOCK:
+        bucket = RATE_BUCKETS[ip]
+        while bucket and bucket[0] < now - RATE_LIMIT_WINDOW:
+            bucket.popleft()
+        if len(bucket) >= RATE_LIMIT_REQUESTS:
+            return False
+        bucket.append(now)
+        return True
+
+def get_from_cache(key: str):
+    with CACHE_LOCK:
+        if key in CACHE:
+            expiry, data = CACHE[key]
+            if time.time() < expiry:
+                return data
+            else:
+                del CACHE[key]
     return None
 
 def set_to_cache(key: str, data, ttl: int):
-    # Periodically prune stale entries if cache gets large
-    if len(CACHE) > 500:
-        now = time.time()
-        stale_keys = [k for k, (exp, _) in CACHE.items() if exp < now]
-        for k in stale_keys:
-            del CACHE[k]
-    CACHE[key] = (time.time() + ttl, data)
+    with CACHE_LOCK:
+        # Periodically prune stale entries if cache gets large
+        if len(CACHE) > 500:
+            now = time.time()
+            stale_keys = [k for k, (exp, _) in CACHE.items() if exp < now]
+            for k in stale_keys:
+                del CACHE[k]
+        CACHE[key] = (time.time() + ttl, data)
 
 
 def clean_location_name(name_str):
     if not name_str:
         return ""
     first = str(name_str).split("/")[0].split(";")[0].strip()
-    latin = re.search(r"^[A-Za-z\u00C0-\u024F0-9\s\-\.\']+", first)
+    # Unicode-aware: keeps non-Latin scripts (Cyrillic, Arabic, CJK, ...) intact
+    latin = re.search(r"^[\w\s\-\.\']+", first, re.UNICODE)
     if latin and len(latin.group(0).strip()) >= 2:
         return latin.group(0).strip()
     return first
@@ -60,6 +119,8 @@ def index():
 
 @app.route("/api/geocoding")
 def geocode():
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"results": []})
@@ -154,6 +215,8 @@ def geocode():
 
 @app.route("/api/reverse-geocode")
 def reverse_geocode():
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
     lat = request.args.get("lat")
     lon = request.args.get("lon")
     if not lat or not lon:
@@ -212,6 +275,8 @@ def reverse_geocode():
 
 @app.route("/api/weather")
 def get_weather():
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
     lat = request.args.get("lat")
     lon = request.args.get("lon")
     timezone = request.args.get("timezone", "auto")
@@ -235,52 +300,11 @@ def get_weather():
         params = {
             "latitude": lat_f,
             "longitude": lon_f,
-            "current": [
-                "temperature_2m",
-                "relative_humidity_2m",
-                "apparent_temperature",
-                "is_day",
-                "precipitation",
-                "weather_code",
-                "cloud_cover",
-                "pressure_msl",
-                "surface_pressure",
-                "wind_speed_10m",
-                "wind_direction_10m",
-                "wind_gusts_10m",
-                "uv_index"
-            ],
-            "hourly": [
-                "temperature_2m",
-                "relative_humidity_2m",
-                "dew_point_2m",
-                "apparent_temperature",
-                "precipitation_probability",
-                "precipitation",
-                "weather_code",
-                "pressure_msl",
-                "visibility",
-                "wind_speed_10m",
-                "wind_direction_10m",
-                "uv_index",
-                "is_day"
-            ],
-            "daily": [
-                "weather_code",
-                "temperature_2m_max",
-                "temperature_2m_min",
-                "apparent_temperature_max",
-                "apparent_temperature_min",
-                "sunrise",
-                "sunset",
-                "uv_index_max",
-                "precipitation_sum",
-                "precipitation_hours",
-                "precipitation_probability_max",
-                "wind_speed_10m_max"
-            ],
+            "current": OPEN_METEO_PARAMS["current"],
+            "hourly": OPEN_METEO_PARAMS["hourly"],
+            "daily": OPEN_METEO_PARAMS["daily"],
             "timezone": timezone,
-            "forecast_days": 8
+            "forecast_days": OPEN_METEO_PARAMS.get("forecast_days", 8)
         }
 
         resp = requests.get(url, params=params, timeout=8)
@@ -299,6 +323,8 @@ def get_weather():
 
 @app.route("/api/air-quality")
 def get_air_quality():
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
     lat = request.args.get("lat")
     lon = request.args.get("lon")
     if not lat or not lon:
@@ -354,4 +380,8 @@ def health():
 
 if __name__ == "__main__":
     logger.info("Starting Weather App on http://127.0.0.1:5000 ...")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        debug=os.environ.get("FLASK_DEBUG") == "1"
+    )
