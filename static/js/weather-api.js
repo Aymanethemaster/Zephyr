@@ -6,6 +6,38 @@
 
 export class WeatherApi {
   /**
+   * Shared Open-Meteo request definition, loaded from
+   * /static/js/weather-params.json — the same file the Flask backend reads —
+   * so the proxied and direct-client requests always ask for identical fields.
+   * Falls back to a minimal built-in set if the file cannot be fetched.
+   */
+  static get _sharedParams() {
+    return this._paramsCache || (this._paramsCache = this._loadParams());
+  }
+
+  static async _loadParams() {
+    const fallback = {
+      current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index',
+      hourly: 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max',
+      forecast_days: 8
+    };
+    try {
+      const resp = await fetch('/static/js/weather-params.json');
+      if (resp.ok) {
+        const data = await resp.json();
+        return {
+          current: (data.current || []).join(','),
+          hourly: (data.hourly || []).join(','),
+          daily: (data.daily || []).join(','),
+          forecast_days: data.forecast_days || 8
+        };
+      }
+    } catch (e) {}
+    return fallback;
+  }
+
+  /**
    * Helper fetch with timeout and error handling
    */
   static async _fetchWithTimeout(url, timeoutMs = 8000, signal = null) {
@@ -170,8 +202,11 @@ export class WeatherApi {
       }
     } catch (e) {}
 
-    // 2. Direct client-side Open-Meteo
-    const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latNum}&longitude=${lonNum}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,surface_pressure,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&timezone=${encodeURIComponent(timezone)}`;
+    // 2. Direct client-side Open-Meteo (same field list as the backend proxy)
+    const params = await WeatherApi._sharedParams;
+    const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latNum}&longitude=${lonNum}` +
+      `&current=${params.current}&hourly=${params.hourly}&daily=${params.daily}` +
+      `&forecast_days=${params.forecast_days}&timezone=${encodeURIComponent(timezone)}`;
     const resp = await this._fetchWithTimeout(omUrl, 9000, signal);
     if (!resp.ok) {
       throw new Error(`Weather fetch failed (HTTP ${resp.status})`);
