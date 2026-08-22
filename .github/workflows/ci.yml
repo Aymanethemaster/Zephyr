@@ -24,23 +24,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Verify Python Compilation & Syntax
         run: |
           python -m py_compile app.py
 
-      - name: Run Backend Integration & Health Tests
+      - name: Run Unit & Integration Tests
         run: |
-          python -c "
-          from app import app
-          with app.test_client() as client:
-              # Test health endpoint
-              res = client.get('/api/health')
-              assert res.status_code == 200, f'Health check failed: {res.status_code}'
-              # Test main HTML template
-              res = client.get('/')
-              assert res.status_code == 200, f'Index page failed: {res.status_code}'
-              assert b'Zeph' in res.data, 'Zephyr branding missing'
-              print('All CI tests passed successfully!')
-          "
+          pytest tests/ -v
