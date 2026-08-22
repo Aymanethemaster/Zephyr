@@ -23,7 +23,8 @@ import {
   getSvgIcon,
   getBeaufortScale,
   getBeaufortName,
-  getMoonPhaseIcon
+  getMoonPhaseIcon,
+  escapeHtml
 } from './utils.js';
 
 /**
@@ -606,18 +607,28 @@ class WeatherApp {
     }
   }
 
+  /**
+   * Index into the hourly arrays matching the current hour in the location's
+   * local time. Shared by the hourly strip and the metrics grid so both read
+   * the same point in the forecast.
+   */
+  getCurrentHourIndex() {
+    const hourly = this.weatherData?.hourly;
+    const currentLocalTime = this.weatherData?.current?.time;
+    if (!hourly || !Array.isArray(hourly.time) || hourly.time.length === 0) return 0;
+    if (currentLocalTime && typeof currentLocalTime === 'string') {
+      const curHour = currentLocalTime.slice(0, 13);
+      const idx = hourly.time.findIndex(t => typeof t === 'string' && t.startsWith(curHour));
+      if (idx !== -1) return idx;
+    }
+    return 0;
+  }
+
   renderHourlyForecast() {
     const hourly = this.weatherData?.hourly;
     if (!hourly || !Array.isArray(hourly.time) || hourly.time.length === 0) return;
 
-    // Find current hour index timezone-accurately using local time
-    const currentLocalTime = this.weatherData?.current?.time;
-    let startIndex = 0;
-    if (currentLocalTime && typeof currentLocalTime === 'string') {
-      const curHour = currentLocalTime.slice(0, 13);
-      const idx = hourly.time.findIndex(t => typeof t === 'string' && t.startsWith(curHour));
-      if (idx !== -1) startIndex = idx;
-    }
+    const startIndex = this.getCurrentHourIndex();
 
     const next24Times = hourly.time.slice(startIndex, startIndex + 24);
     const next24Temps = (hourly.temperature_2m || []).slice(startIndex, startIndex + 24);
@@ -644,7 +655,7 @@ class WeatherApp {
         <span class="hourly-time">${timeStr}</span>
         <div class="hourly-icon">${getSvgIcon(info.iconKey, info.isDay, 36)}</div>
         <span class="hourly-temp">${tempVal}</span>
-        <span class="hourly-condition-name" title="${info.desc}">${info.desc}</span>
+        <span class="hourly-condition-name" title="${escapeHtml(info.desc)}">${escapeHtml(info.desc)}</span>
         ${rainChance > 0 ? `<span class="hourly-rain"><img src="/static/icons/raindrop.svg" width="12" height="12" alt="" aria-hidden="true" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:2px;" />${rainChance}%</span>` : `<span class="hourly-wind-sub">${windSpd}</span>`}
       `;
       this.hourlyStripEl.appendChild(item);
@@ -701,7 +712,7 @@ class WeatherApp {
           <span class="daily-day-name">${dayName}</span>
           <span class="daily-date-sub">${dateStr}</span>
         </div>
-        <div class="daily-icon-col" title="${info.desc}">
+        <div class="daily-icon-col" title="${escapeHtml(info.desc)}">
           ${getSvgIcon(info.iconKey, true, 28)}
         </div>
         <div class="temp-bar-container" aria-label="Low ${minVal}, High ${maxVal}">
@@ -765,7 +776,8 @@ class WeatherApp {
 
     // 3. Humidity & Moisture
     this.humidityValEl.textContent = current.relative_humidity_2m !== undefined ? `${current.relative_humidity_2m}%` : '--%';
-    const dewPoint = hourly?.dew_point_2m?.[0];
+    const hourIdx = this.getCurrentHourIndex();
+    const dewPoint = hourly?.dew_point_2m?.[hourIdx];
     this.dewPointEl.textContent = `Dew point ${formatTemp(dewPoint, this.unit)}`;
     if (current.relative_humidity_2m < 35) {
       this.humidityDescEl.textContent = 'Air feels dry and crisp.';
@@ -782,7 +794,7 @@ class WeatherApp {
     }
 
     // 4. Pressure & Visibility
-    const visibilityMeters = hourly?.visibility?.[0] || 10000;
+    const visibilityMeters = hourly?.visibility?.[hourIdx] || 10000;
     this.visibilityValEl.textContent = formatVisibility(visibilityMeters, this.unit);
     const pressureVal = current.pressure_msl || current.surface_pressure;
     this.pressureValEl.textContent = formatPressure(pressureVal, this.unit);
