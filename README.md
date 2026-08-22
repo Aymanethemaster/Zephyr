@@ -71,6 +71,13 @@ python app.py
 
 Visit **[http://127.0.0.1:5000](http://127.0.0.1:5000)** in your web browser.
 
+### 5. Run the Tests (Optional)
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
 ---
 
 ## 📁 Project Structure
@@ -79,12 +86,14 @@ Visit **[http://127.0.0.1:5000](http://127.0.0.1:5000)** in your web browser.
 zephyr/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml              # GitHub Actions CI automated testing pipeline
-├── app.py                      # Flask backend proxy with in-memory TTL caching
+│       └── ci.yml              # GitHub Actions CI: py_compile + pytest suite
+├── app.py                      # Flask backend proxy with TTL caching & per-IP rate limiting
 ├── index.html                  # Semantic HTML5 SPA layout
 ├── requirements.txt            # Minimal dependencies (Flask, Requests, Gunicorn)
 ├── Procfile                    # Production PaaS process file (Render/Railway/Heroku)
 ├── vercel.json                 # Vercel deployment configuration
+├── tests/
+│   └── test_app.py             # Unit & integration tests (pytest)
 ├── .gitignore                  # Git ignore rules
 ├── LICENSE                     # MIT License
 ├── README.md                   # Project documentation
@@ -96,6 +105,7 @@ zephyr/
     └── js/
         ├── app.js              # Application controller, DOM & state manager
         ├── weather-api.js      # Backend API client with timeout protection
+        ├── weather-params.json # Shared Open-Meteo field list (backend + frontend)
         └── utils.js            # WMO weather code dictionary, Meteocon mapping & math helpers
 ```
 
@@ -148,12 +158,16 @@ The Flask backend provides clean, sanitized JSON proxy routes with automatic TTL
 
 ## 🚢 Deployment
 
-### Deploy to Vercel (Recommended — 100% Free & No Credit Card Required)
+### Deploy to Vercel (Static Mode — 100% Free & No Credit Card Required)
+
+The app runs on Vercel as a **pure static site**: `vercel.json` serves `index.html` and `/static` assets directly, and the frontend (`static/js/weather-api.js`) detects that the `/api/*` proxy routes are unavailable and calls Open-Meteo, Photon, and BigDataCloud directly from the browser. All features work in this mode; the Flask backend is bypassed entirely (you lose its server-side caching and rate limiting).
 
 1. Push your repository to GitHub: `https://github.com/Aymanethemaster/zephyr`.
 2. Go to **[vercel.com](https://vercel.com/)** and click **Continue with GitHub** (No credit card required).
 3. Click **Add New...** ➔ **Project** ➔ Import your `zephyr` repository.
-4. Click **Deploy** — Vercel reads `vercel.json` and goes live in ~30 seconds with a free global HTTPS domain.
+4. Click **Deploy** — Vercel goes live in ~30 seconds with a free global HTTPS domain.
+
+To run the full Flask backend instead, use any Python-capable host (Render, Railway, PythonAnywhere, Docker below).
 
 ---
 
