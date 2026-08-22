@@ -78,6 +78,13 @@ def test_index(client):
     assert b"Zeph" in res.data
 
 
+def test_service_worker(client):
+    res = client.get("/sw.js")
+    assert res.status_code == 200
+    assert b"zephyr" in res.data
+    assert "javascript" in res.headers.get("Content-Type", "")
+
+
 def test_weather_requires_coords(client):
     res = client.get("/api/weather")
     assert res.status_code == 400

@@ -22,9 +22,11 @@
 - **100% Free & Zero API Keys**: Works immediately upon cloning — no account creation, tokens, or credit cards required.
 - **Dynamic Atmospheric Glassmorphism**: Translucent frosted-glass cards with ambient glow lighting that dynamically shifts across 7 real-time weather themes (_Clear Day, Clear Night, Overcast, Rain, Snow, Fog, Thunderstorm_).
 - **Instant Geolocation on Startup**: Automatically requests browser GPS on load, reverse-geocodes your coordinates, and renders your exact local weather in seconds.
+- **Favorite Locations & Search History**: One-click star bookmarking on the hero card and instant dropdown access to saved favorite cities and recent searches with local persistence.
 - **Hybrid Global Search**: Typo-tolerant and multilingual city search powered by Open-Meteo and OpenStreetMap Photon (_e.g., handles international transliterations_).
 - **Pure Meteocons 2.0.0 SVGs**: 122 animated, hardware-accelerated vector weather icons across every card and metric.
-- **24-Hour & 7-Day Forecasts**: Animated hourly strip with precipitation probabilities, alongside a 7-day daily forecast with proportional temperature range bars.
+- **24-Hour & 7-Day Forecasts**: Animated hourly strip with desktop left/right navigation controls and precipitation probabilities, alongside a 7-day daily forecast with proportional temperature range bars.
+- **Service Worker & PWA Offline Shell**: Fast asset and icon caching with Service Worker (`sw.js`) support for instantaneous reloads and offline resiliency.
 - **Atmospheric Metrics Grid**:
   - ☀️ **UV Index** with color-coded exposure gauge & real-time safety recommendations.
   - 💨 **Wind Speed & Direction** with Beaufort scale tracking and animated direction indicators.
@@ -88,7 +90,8 @@ zephyr/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions CI: py_compile + pytest suite
 ├── app.py                      # Flask backend proxy with TTL caching & per-IP rate limiting
-├── index.html                  # Semantic HTML5 SPA layout
+├── index.html                  # Semantic HTML5 SPA layout with quick access & navigation controls
+├── sw.js                       # Service Worker for offline static asset & icon caching
 ├── requirements.txt            # Minimal dependencies (Flask, Requests, Gunicorn)
 ├── Procfile                    # Production PaaS process file (Render/Railway/Heroku)
 ├── vercel.json                 # Vercel deployment configuration
@@ -103,7 +106,7 @@ zephyr/
     ├── icons/                  # 122 animated Meteocons 2.0.0 vector SVGs
     ├── manifest.json           # Progressive Web App (PWA) manifest
     └── js/
-        ├── app.js              # Application controller, DOM & state manager
+        ├── app.js              # Application controller, DOM, state & favorites manager
         ├── weather-api.js      # Backend API client with timeout protection
         ├── weather-params.json # Shared Open-Meteo field list (backend + frontend)
         └── utils.js            # WMO weather code dictionary, Meteocon mapping & math helpers

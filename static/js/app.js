@@ -110,6 +110,7 @@ class WeatherApp {
     this.heroFeelsEl = document.getElementById('hero-feels');
     this.heroHumidityEl = document.getElementById('hero-humidity');
     this.heroWindEl = document.getElementById('hero-wind');
+    this.heroFavoriteBtn = document.getElementById('hero-favorite-btn');
     this.heroErrorState = document.getElementById('hero-error-state');
     this.heroErrorTitle = document.getElementById('hero-error-title');
     this.heroErrorDesc = document.getElementById('hero-error-desc');
@@ -120,6 +121,8 @@ class WeatherApp {
     // Hourly & Daily
     this.hourlyStripEl = document.getElementById('hourly-strip');
     this.hourlyStripContainer = document.getElementById('hourly-strip-container');
+    this.hourlyScrollLeftBtn = document.getElementById('hourly-scroll-left');
+    this.hourlyScrollRightBtn = document.getElementById('hourly-scroll-right');
     this.dailyListEl = document.getElementById('daily-list');
 
     // Metrics
@@ -158,6 +161,7 @@ class WeatherApp {
   bindEvents() {
     // Search input
     this.searchInput.addEventListener('input', (e) => this.handleSearchInput(e.target.value));
+    this.searchInput.addEventListener('focus', () => this.handleSearchFocus());
     this.searchInput.addEventListener('keydown', (e) => this.handleSearchKeydown(e));
     this.searchClearBtn.addEventListener('click', () => {
       this.searchInput.value = '';
@@ -169,7 +173,7 @@ class WeatherApp {
       if (this.searchSpinner) {
         this.searchSpinner.classList.remove('active');
       }
-      this.closeAutocomplete();
+      this.handleSearchFocus();
       this.searchInput.focus();
     });
 
@@ -179,6 +183,23 @@ class WeatherApp {
         this.closeAutocomplete();
       }
     });
+
+    // Hero favorite toggle button
+    if (this.heroFavoriteBtn) {
+      this.heroFavoriteBtn.addEventListener('click', () => this.handleFavoriteToggle());
+    }
+
+    // Hourly forecast scroll arrows
+    if (this.hourlyScrollLeftBtn) {
+      this.hourlyScrollLeftBtn.addEventListener('click', () => this.scrollHourly(-320));
+    }
+    if (this.hourlyScrollRightBtn) {
+      this.hourlyScrollRightBtn.addEventListener('click', () => this.scrollHourly(320));
+    }
+    if (this.hourlyStripContainer) {
+      this.hourlyStripContainer.addEventListener('scroll', () => this.updateHourlyScrollArrows(), { passive: true });
+      window.addEventListener('resize', () => this.updateHourlyScrollArrows(), { passive: true });
+    }
 
     // Hero inline retry button
     if (this.heroRetryBtn) {
@@ -382,7 +403,7 @@ class WeatherApp {
     }
 
     if (trimmed.length < 2) {
-      this.closeAutocomplete();
+      this.renderQuickAccessDropdown();
       return;
     }
 
@@ -507,10 +528,227 @@ class WeatherApp {
       longitude: parseFloat(item.longitude),
       timezone: item.timezone || 'auto'
     };
+    this.addRecentSearch(this.currentLocation);
     this.searchInput.value = '';
     this.searchClearBtn.classList.remove('visible');
     this.closeAutocomplete();
     this.loadLocationWeather(this.currentLocation);
+  }
+
+  // --- Favorites & Recent Searches Management ---
+
+  getFavorites() {
+    return SafeStorage.getItem('weather_favorites', []);
+  }
+
+  isFavorite(loc) {
+    if (!loc) return false;
+    const favs = this.getFavorites();
+    return favs.some(f => 
+      (f.name && loc.name && f.name.toLowerCase() === loc.name.toLowerCase()) ||
+      (typeof f.latitude === 'number' && typeof loc.latitude === 'number' &&
+       Math.abs(f.latitude - loc.latitude) < 0.05 && Math.abs(f.longitude - loc.longitude) < 0.05)
+    );
+  }
+
+  handleFavoriteToggle() {
+    if (!this.currentLocation) return;
+    const favs = this.getFavorites();
+    const locName = this.currentLocation.name || 'Location';
+    const existsIdx = favs.findIndex(f => 
+      (f.name && this.currentLocation.name && f.name.toLowerCase() === this.currentLocation.name.toLowerCase()) ||
+      (typeof f.latitude === 'number' && typeof this.currentLocation.latitude === 'number' &&
+       Math.abs(f.latitude - this.currentLocation.latitude) < 0.05 && Math.abs(f.longitude - this.currentLocation.longitude) < 0.05)
+    );
+
+    if (existsIdx >= 0) {
+      favs.splice(existsIdx, 1);
+      SafeStorage.setItem('weather_favorites', favs);
+      this.updateFavoriteButtonUI();
+      this.showToast(`Removed ${locName} from favorites`);
+    } else {
+      const newFav = {
+        name: this.currentLocation.name || 'Location',
+        admin1: this.currentLocation.admin1 || '',
+        country: this.currentLocation.country || '',
+        latitude: this.currentLocation.latitude,
+        longitude: this.currentLocation.longitude,
+        timezone: this.currentLocation.timezone || 'auto'
+      };
+      favs.unshift(newFav);
+      if (favs.length > 12) favs.pop();
+      SafeStorage.setItem('weather_favorites', favs);
+      this.updateFavoriteButtonUI();
+      this.showToast(`Saved ${locName} to favorites ⭐`);
+    }
+
+    if (this.autocompleteDropdown.classList.contains('show') && (!this.searchInput.value || this.searchInput.value.trim().length < 2)) {
+      this.renderQuickAccessDropdown();
+    }
+  }
+
+  updateFavoriteButtonUI() {
+    if (!this.heroFavoriteBtn) return;
+    const isFav = this.isFavorite(this.currentLocation);
+    this.heroFavoriteBtn.classList.toggle('favorited', isFav);
+    const locName = this.currentLocation?.name || 'Location';
+    const label = isFav ? `Remove ${locName} from favorites` : `Save ${locName} to favorites`;
+    this.heroFavoriteBtn.setAttribute('aria-label', label);
+    this.heroFavoriteBtn.setAttribute('title', label);
+  }
+
+  removeFavorite(idx) {
+    const favs = this.getFavorites();
+    if (idx >= 0 && idx < favs.length) {
+      const removed = favs.splice(idx, 1)[0];
+      SafeStorage.setItem('weather_favorites', favs);
+      this.updateFavoriteButtonUI();
+      this.showToast(`Removed ${removed.name || 'city'} from favorites`);
+      this.renderQuickAccessDropdown();
+    }
+  }
+
+  getRecentSearches() {
+    return SafeStorage.getItem('weather_recents', []);
+  }
+
+  addRecentSearch(loc) {
+    if (!loc || !loc.name || isNaN(loc.latitude) || isNaN(loc.longitude)) return;
+    let recents = this.getRecentSearches();
+    recents = recents.filter(r => 
+      !(r.name.toLowerCase() === loc.name.toLowerCase() &&
+        Math.abs(r.latitude - loc.latitude) < 0.05 &&
+        Math.abs(r.longitude - loc.longitude) < 0.05)
+    );
+    recents.unshift({
+      name: loc.name,
+      admin1: loc.admin1 || '',
+      country: loc.country || '',
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      timezone: loc.timezone || 'auto'
+    });
+    if (recents.length > 6) recents.pop();
+    SafeStorage.setItem('weather_recents', recents);
+  }
+
+  removeRecentSearch(idx) {
+    const recents = this.getRecentSearches();
+    if (idx >= 0 && idx < recents.length) {
+      recents.splice(idx, 1);
+      SafeStorage.setItem('weather_recents', recents);
+      this.renderQuickAccessDropdown();
+    }
+  }
+
+  clearRecentSearches() {
+    SafeStorage.setItem('weather_recents', []);
+    this.showToast('Cleared recent searches');
+    this.renderQuickAccessDropdown();
+  }
+
+  handleSearchFocus() {
+    const val = typeof this.searchInput.value === 'string' ? this.searchInput.value.trim() : '';
+    if (val.length < 2) {
+      this.renderQuickAccessDropdown();
+    }
+  }
+
+  renderQuickAccessDropdown() {
+    const favorites = this.getFavorites();
+    const recents = this.getRecentSearches();
+
+    if (favorites.length === 0 && recents.length === 0) {
+      this.closeAutocomplete();
+      return;
+    }
+
+    this.autocompleteDropdown.innerHTML = '';
+
+    // 1. Favorites Section
+    if (favorites.length > 0) {
+      const favHeader = document.createElement('li');
+      favHeader.className = 'dropdown-section-header';
+      favHeader.innerHTML = `<span>★ Saved Favorites</span><span class="dropdown-item-badge">${favorites.length}</span>`;
+      this.autocompleteDropdown.appendChild(favHeader);
+
+      favorites.forEach((item, idx) => {
+        const li = document.createElement('li');
+        li.className = 'autocomplete-item';
+        li.setAttribute('role', 'option');
+        const sub = [item.admin1, item.country].filter(Boolean).join(', ');
+        li.innerHTML = `
+          <span class="autocomplete-city">⭐ ${escapeHtml(item.name)}</span>
+          <div class="dropdown-item-meta">
+            ${sub ? `<span class="autocomplete-country">${escapeHtml(sub)}</span>` : ''}
+            <button type="button" class="dropdown-delete-item-btn" title="Remove favorite" aria-label="Remove ${escapeHtml(item.name)} from favorites">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        `;
+        li.addEventListener('click', (e) => {
+          if (e.target.closest('.dropdown-delete-item-btn')) return;
+          this.selectLocation(item);
+        });
+        const delBtn = li.querySelector('.dropdown-delete-item-btn');
+        if (delBtn) {
+          delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.removeFavorite(idx);
+          });
+        }
+        this.autocompleteDropdown.appendChild(li);
+      });
+    }
+
+    // 2. Recent Searches Section
+    if (recents.length > 0) {
+      const recHeader = document.createElement('li');
+      recHeader.className = 'dropdown-section-header';
+      recHeader.innerHTML = `
+        <span>🕒 Recent Searches</span>
+        <button type="button" class="dropdown-clear-btn" id="clear-recents-btn">Clear All</button>
+      `;
+      const clearBtn = recHeader.querySelector('#clear-recents-btn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.clearRecentSearches();
+        });
+      }
+      this.autocompleteDropdown.appendChild(recHeader);
+
+      recents.forEach((item, idx) => {
+        const li = document.createElement('li');
+        li.className = 'autocomplete-item';
+        li.setAttribute('role', 'option');
+        const sub = [item.admin1, item.country].filter(Boolean).join(', ');
+        li.innerHTML = `
+          <span class="autocomplete-city">${escapeHtml(item.name)}</span>
+          <div class="dropdown-item-meta">
+            ${sub ? `<span class="autocomplete-country">${escapeHtml(sub)}</span>` : ''}
+            <button type="button" class="dropdown-delete-item-btn" title="Remove from recents" aria-label="Remove ${escapeHtml(item.name)} from recents">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        `;
+        li.addEventListener('click', (e) => {
+          if (e.target.closest('.dropdown-delete-item-btn')) return;
+          this.selectLocation(item);
+        });
+        const delBtn = li.querySelector('.dropdown-delete-item-btn');
+        if (delBtn) {
+          delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.removeRecentSearch(idx);
+          });
+        }
+        this.autocompleteDropdown.appendChild(li);
+      });
+    }
+
+    this.autocompleteDropdown.classList.add('show');
+    this.searchInput.setAttribute('aria-expanded', 'true');
   }
 
   async loadLocationWeather(location) {
@@ -597,6 +835,7 @@ class WeatherApp {
     this.heroFeelsEl.textContent = formatTemp(current.apparent_temperature, this.unit);
     this.heroHumidityEl.textContent = current.relative_humidity_2m !== undefined ? `${current.relative_humidity_2m}%` : '--%';
     this.heroWindEl.textContent = formatSpeed(current.wind_speed_10m, this.unit);
+    this.updateFavoriteButtonUI();
 
     // Trigger subtle data reveal animation
     const heroCard = document.getElementById('hero-card');
@@ -660,6 +899,9 @@ class WeatherApp {
       `;
       this.hourlyStripEl.appendChild(item);
     }
+
+    this.updateHourlyScrollArrows();
+    setTimeout(() => this.updateHourlyScrollArrows(), 50);
   }
 
   renderDailyForecast() {
@@ -856,9 +1098,34 @@ class WeatherApp {
       if (aqiMeter) aqiMeter.setAttribute('aria-valuenow', String(Math.round(aqiVal)));
     }
   }
+
+  // --- Hourly Strip Scrolling ---
+
+  scrollHourly(amount) {
+    if (!this.hourlyStripContainer) return;
+    this.hourlyStripContainer.scrollBy({ left: amount, behavior: 'smooth' });
+    setTimeout(() => this.updateHourlyScrollArrows(), 350);
+  }
+
+  updateHourlyScrollArrows() {
+    if (!this.hourlyStripContainer || !this.hourlyScrollLeftBtn || !this.hourlyScrollRightBtn) return;
+    const { scrollLeft, scrollWidth, clientWidth } = this.hourlyStripContainer;
+    this.hourlyScrollLeftBtn.disabled = scrollLeft <= 4;
+    this.hourlyScrollRightBtn.disabled = scrollLeft + clientWidth >= scrollWidth - 4;
+  }
 }
 
 // Initialize on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new WeatherApp();
 });
+
+// Register Service Worker for offline shell & asset caching
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('ServiceWorker registration error:', err);
+    });
+  });
+}
+

@@ -5,7 +5,7 @@ import logging
 import re
 import threading
 from collections import defaultdict, deque
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -69,7 +69,8 @@ RATE_BUCKETS = defaultdict(deque)
 RATE_LOCK = threading.Lock()
 
 def check_rate_limit():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    raw_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    ip = raw_ip.split(",")[0].strip() if raw_ip else "unknown"
     now = time.time()
     with RATE_LOCK:
         bucket = RATE_BUCKETS[ip]
@@ -115,6 +116,11 @@ def clean_location_name(name_str):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(BASE_DIR, "sw.js", mimetype="application/javascript")
 
 
 @app.route("/api/geocoding")
