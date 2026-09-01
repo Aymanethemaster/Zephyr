@@ -219,6 +219,79 @@ def geocode():
     return jsonify(result_payload)
 
 
+@app.route("/api/ip-location")
+def get_ip_location():
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
+
+    raw_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    ip = raw_ip.split(",")[0].strip() if raw_ip else "unknown"
+    is_local_ip = ip in ("127.0.0.1", "localhost", "::1", "unknown") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.")
+    cache_key = f"iploc:{ip}"
+    cached = get_from_cache(cache_key)
+    if cached:
+        return jsonify(cached)
+
+    # 1. Primary: BigDataCloud IP Geocoding
+    try:
+        url = "https://api.bigdatacloud.net/data/reverse-geocode-client"
+        params = {"localityLanguage": "en"}
+        if not is_local_ip:
+            params["ip"] = ip
+        resp = requests.get(url, params=params, timeout=4.0)
+        if resp.ok:
+            data = resp.json()
+            lat = data.get("latitude")
+            lon = data.get("longitude")
+            if lat is not None and lon is not None:
+                city = data.get("city") or data.get("locality") or data.get("principalSubdivision") or data.get("countryName") or "Current Location"
+                admin1 = data.get("principalSubdivision") or ""
+                country = data.get("countryName") or ""
+                country_code = data.get("countryCode") or ""
+                payload = {
+                    "name": city,
+                    "admin1": admin1 if admin1 != city else "",
+                    "country": country,
+                    "country_code": country_code,
+                    "latitude": round(float(lat), 4),
+                    "longitude": round(float(lon), 4),
+                    "timezone": "auto"
+                }
+                set_to_cache(cache_key, payload, CACHE_TTL_GEOCODING)
+                return jsonify(payload)
+    except Exception as e:
+        logger.warning(f"BigDataCloud IP location warning for IP '{ip}': {e}")
+
+    # 2. Secondary: GeoJS IP Lookup Fallback
+    try:
+        g_url = f"https://get.geojs.io/v1/ip/geo/{ip}.json" if not is_local_ip else "https://get.geojs.io/v1/ip/geo.json"
+        g_resp = requests.get(g_url, timeout=3.5)
+        if g_resp.ok:
+            g_data = g_resp.json()
+            lat = g_data.get("latitude")
+            lon = g_data.get("longitude")
+            if lat and lon:
+                city = g_data.get("city") or g_data.get("region") or g_data.get("country") or "Current Location"
+                admin1 = g_data.get("region") or ""
+                country = g_data.get("country") or ""
+                country_code = g_data.get("country_code") or ""
+                payload = {
+                    "name": city,
+                    "admin1": admin1 if admin1 != city else "",
+                    "country": country,
+                    "country_code": country_code,
+                    "latitude": round(float(lat), 4),
+                    "longitude": round(float(lon), 4),
+                    "timezone": g_data.get("timezone") or "auto"
+                }
+                set_to_cache(cache_key, payload, CACHE_TTL_GEOCODING)
+                return jsonify(payload)
+    except Exception as e:
+        logger.warning(f"GeoJS IP location warning for IP '{ip}': {e}")
+
+    return jsonify({"error": "Unable to determine location from IP"}), 404
+
+
 @app.route("/api/reverse-geocode")
 def reverse_geocode():
     if not check_rate_limit():
@@ -247,11 +320,11 @@ def reverse_geocode():
             "longitude": lon_f,
             "localityLanguage": "en"
         }
-        resp = requests.get(url, params=params, timeout=3.5)
+        resp = requests.get(url, params=params, timeout=4.0)
         resp.raise_for_status()
         data = resp.json()
 
-        city = data.get("city") or data.get("locality") or data.get("principalSubdivision") or "Current Location"
+        city = data.get("city") or data.get("locality") or data.get("principalSubdivision") or data.get("countryName") or "Current Location"
         country = data.get("countryName") or ""
         country_code = data.get("countryCode") or ""
         admin1 = data.get("principalSubdivision") or ""

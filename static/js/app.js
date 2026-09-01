@@ -291,57 +291,98 @@ class WeatherApp {
     }
   }
 
-  initUserLocation() {
+  async initUserLocation() {
+    let resolved = false;
+
+    // 1. Concurrently kick off IP-based location detection (ultra-fast, ~150-300ms, no permissions required)
+    const ipLocationPromise = WeatherApi.getIpLocation().then(ipLoc => {
+      if (ipLoc && !resolved) {
+        resolved = true;
+        this.currentLocation = ipLoc;
+        this.loadLocationWeather(this.currentLocation);
+        return ipLoc;
+      }
+      return null;
+    }).catch(err => {
+      console.warn('IP geolocation lookup warning:', err);
+      return null;
+    });
+
+    // 2. Concurrently attempt browser GPS geolocation if supported
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           const { latitude, longitude } = pos.coords;
           try {
             const locInfo = await WeatherApi.reverseGeocode(latitude, longitude);
-            this.currentLocation = {
+            const gpsLoc = {
               name: locInfo.name || 'My Location',
               admin1: locInfo.admin1 || '',
               country: locInfo.country || '',
+              country_code: locInfo.country_code || '',
               latitude: locInfo.latitude || latitude,
               longitude: locInfo.longitude || longitude,
               timezone: 'auto'
             };
-          } catch {
-            this.currentLocation = {
-              name: 'My Location',
-              latitude,
-              longitude,
-              timezone: 'auto'
-            };
+
+            // If weather was already loaded via IP, refine only if GPS coords differ significantly (>5km)
+            if (this.currentLocation && this.weatherData) {
+              const dLat = Math.abs(this.currentLocation.latitude - gpsLoc.latitude);
+              const dLon = Math.abs(this.currentLocation.longitude - gpsLoc.longitude);
+              if (dLat > 0.05 || dLon > 0.05 || !this.currentLocation.country) {
+                this.currentLocation = gpsLoc;
+                this.loadLocationWeather(this.currentLocation);
+              }
+            } else {
+              resolved = true;
+              this.currentLocation = gpsLoc;
+              this.loadLocationWeather(this.currentLocation);
+            }
+          } catch (e) {
+            if (!resolved) {
+              resolved = true;
+              this.currentLocation = {
+                name: 'My Location',
+                latitude,
+                longitude,
+                timezone: 'auto'
+              };
+              this.loadLocationWeather(this.currentLocation);
+            }
           }
-          this.loadLocationWeather(this.currentLocation);
         },
-        (err) => {
-          console.info('Geolocation prompt dismissed or unavailable, using fallback/last location.');
-          const savedLoc = SafeStorage.getItem('weather_last_loc');
-          const defaultLoc = savedLoc || {
-            name: 'New York',
-            country: 'United States',
-            latitude: 40.7128,
-            longitude: -74.0060,
-            timezone: 'America/New_York'
-          };
-          this.currentLocation = defaultLoc;
-          this.loadLocationWeather(this.currentLocation);
+        async (err) => {
+          console.info('GPS geolocation unavailable or dismissed:', err?.message || err);
+          const ipLoc = await ipLocationPromise;
+          if (!resolved && !ipLoc) {
+            const savedLoc = SafeStorage.getItem('weather_last_loc');
+            const defaultLoc = savedLoc || {
+              name: 'New York',
+              country: 'United States',
+              latitude: 40.7128,
+              longitude: -74.0060,
+              timezone: 'America/New_York'
+            };
+            this.currentLocation = defaultLoc;
+            this.loadLocationWeather(this.currentLocation);
+          }
         },
-        { timeout: 8000, enableHighAccuracy: true }
+        { timeout: 6000, enableHighAccuracy: false, maximumAge: 300000 }
       );
     } else {
-      const savedLoc = SafeStorage.getItem('weather_last_loc');
-      const defaultLoc = savedLoc || {
-        name: 'New York',
-        country: 'United States',
-        latitude: 40.7128,
-        longitude: -74.0060,
-        timezone: 'America/New_York'
-      };
-      this.currentLocation = defaultLoc;
-      this.loadLocationWeather(this.currentLocation);
+      const ipLoc = await ipLocationPromise;
+      if (!resolved && !ipLoc) {
+        const savedLoc = SafeStorage.getItem('weather_last_loc');
+        const defaultLoc = savedLoc || {
+          name: 'New York',
+          country: 'United States',
+          latitude: 40.7128,
+          longitude: -74.0060,
+          timezone: 'America/New_York'
+        };
+        this.currentLocation = defaultLoc;
+        this.loadLocationWeather(this.currentLocation);
+      }
     }
   }
 
@@ -361,11 +402,13 @@ class WeatherApp {
             name: locInfo.name || 'My Location',
             admin1: locInfo.admin1 || '',
             country: locInfo.country || '',
+            country_code: locInfo.country_code || '',
             latitude: locInfo.latitude || latitude,
             longitude: locInfo.longitude || longitude,
             timezone: 'auto'
           };
           this.loadLocationWeather(this.currentLocation);
+          this.showToast(`Located: ${this.currentLocation.name} 📍`);
         } catch (err) {
           console.warn('Reverse geocode error:', err);
           this.loadLocationWeather({
@@ -376,8 +419,19 @@ class WeatherApp {
           });
         }
       },
-      (err) => {
+      async (err) => {
         console.warn('Geolocation error:', err);
+        // Fallback to IP location on manual click if GPS is denied or unavailable
+        try {
+          const ipLoc = await WeatherApi.getIpLocation();
+          if (ipLoc) {
+            this.currentLocation = ipLoc;
+            this.loadLocationWeather(this.currentLocation);
+            this.showToast(`Located via IP: ${ipLoc.name} 🌐`);
+            return;
+          }
+        } catch {}
+
         let msg = 'Location access unavailable.';
         if (err.code === 1) {
           msg = 'Location permission denied. Please allow GPS access in your browser.';
@@ -388,7 +442,7 @@ class WeatherApp {
         }
         this.showToast(msg);
       },
-      { timeout: 9000, enableHighAccuracy: true }
+      { timeout: 9000, enableHighAccuracy: true, maximumAge: 0 }
     );
   }
 

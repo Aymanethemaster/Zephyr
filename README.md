@@ -151,6 +151,7 @@ The Flask backend provides clean, sanitized JSON proxy routes with automatic TTL
 
 | Endpoint                   | Parameters               | Description                                                  | Cache TTL  |
 | :------------------------- | :----------------------- | :----------------------------------------------------------- | :--------- |
+| `GET /api/ip-location`     | —                        | Automatically resolves client IP to location & coordinates   | 1 hour     |
 | `GET /api/geocoding`       | `q` _(string)_           | Searches cities worldwide with typo & multilingual fallback  | 1 hour     |
 | `GET /api/reverse-geocode` | `lat`, `lon` _(float)_   | Resolves coordinates to city, region, and country name       | 1 hour     |
 | `GET /api/weather`         | `lat`, `lon`, `timezone` | Fetches current conditions, 24-hr hourly, and 8-day forecast | 10 minutes |

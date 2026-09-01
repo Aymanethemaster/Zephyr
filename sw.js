@@ -70,7 +70,8 @@ self.addEventListener('fetch', (event) => {
   const isApiRequest = url.pathname.startsWith('/api/') ||
     url.hostname.includes('open-meteo.com') ||
     url.hostname.includes('komoot.io') ||
-    url.hostname.includes('bigdatacloud.net');
+    url.hostname.includes('bigdatacloud.net') ||
+    url.hostname.includes('geojs.io');
 
   if (isApiRequest) {
     event.respondWith(

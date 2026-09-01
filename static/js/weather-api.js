@@ -141,6 +141,65 @@ export class WeatherApi {
     return [];
   }
 
+  static async getIpLocation(signal = null) {
+    // 1. Try local proxy first
+    try {
+      const resp = await this._fetchWithTimeout('/api/ip-location', 3500, signal);
+      if (resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await resp.json();
+          if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+            return data;
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Direct client-side BigDataCloud IP lookup
+    try {
+      const bdcUrl = 'https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en';
+      const resp = await this._fetchWithTimeout(bdcUrl, 4000, signal);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.latitude !== undefined && data.longitude !== undefined) {
+          const city = data.city || data.locality || data.principalSubdivision || data.countryName || 'Current Location';
+          return {
+            name: city,
+            admin1: data.principalSubdivision && data.principalSubdivision !== city ? data.principalSubdivision : '',
+            country: data.countryName || '',
+            country_code: (data.countryCode || '').toUpperCase(),
+            latitude: parseFloat(data.latitude),
+            longitude: parseFloat(data.longitude),
+            timezone: 'auto'
+          };
+        }
+      }
+    } catch (e) {}
+
+    // 3. Direct client-side GeoJS fallback
+    try {
+      const gResp = await this._fetchWithTimeout('https://get.geojs.io/v1/ip/geo.json', 3500, signal);
+      if (gResp.ok) {
+        const data = await gResp.json();
+        if (data && data.latitude && data.longitude) {
+          const city = data.city || data.region || data.country || 'Current Location';
+          return {
+            name: city,
+            admin1: data.region && data.region !== city ? data.region : '',
+            country: data.country || '',
+            country_code: (data.country_code || '').toUpperCase(),
+            latitude: parseFloat(data.latitude),
+            longitude: parseFloat(data.longitude),
+            timezone: data.timezone || 'auto'
+          };
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
   static async reverseGeocode(lat, lon, signal = null) {
     const latNum = parseFloat(lat);
     const lonNum = parseFloat(lon);
@@ -165,10 +224,12 @@ export class WeatherApi {
       const resp = await this._fetchWithTimeout(bdcUrl, 5000, signal);
       if (resp.ok) {
         const data = await resp.json();
+        const city = data.city || data.locality || data.principalSubdivision || data.countryName || `${latNum.toFixed(2)}°, ${lonNum.toFixed(2)}°`;
         return {
-          name: data.city || data.locality || `${latNum.toFixed(2)}°, ${lonNum.toFixed(2)}°`,
+          name: city,
           country: data.countryName || '',
-          admin1: data.principalSubdivision || '',
+          country_code: (data.countryCode || '').toUpperCase(),
+          admin1: data.principalSubdivision && data.principalSubdivision !== city ? data.principalSubdivision : '',
           latitude: latNum,
           longitude: lonNum
         };
@@ -178,6 +239,7 @@ export class WeatherApi {
     return {
       name: `${latNum.toFixed(2)}°, ${lonNum.toFixed(2)}°`,
       country: '',
+      country_code: '',
       admin1: '',
       latitude: latNum,
       longitude: lonNum

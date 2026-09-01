@@ -112,6 +112,29 @@ def test_geocoding_empty_query(client):
     assert res.get_json() == {"results": []}
 
 
+def test_ip_location_route(client, monkeypatch):
+    class MockResp:
+        ok = True
+        def json(self):
+            return {
+                "city": "Casablanca",
+                "locality": "Casablanca",
+                "principalSubdivision": "Casablanca-Settat",
+                "countryName": "Morocco",
+                "countryCode": "MA",
+                "latitude": 33.5731,
+                "longitude": -7.5898
+            }
+
+    monkeypatch.setattr("app.requests.get", lambda *args, **kwargs: MockResp())
+    res = client.get("/api/ip-location")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["name"] == "Casablanca"
+    assert data["country"] == "Morocco"
+    assert data["latitude"] == 33.5731
+
+
 def test_rate_limit(client, monkeypatch):
     # Block outbound HTTP so the test never touches the network; the geocode
     # route logs and returns an empty payload, exercising only the limiter.
