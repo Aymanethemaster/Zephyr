@@ -3,7 +3,7 @@
  * Provides offline caching for application shell, static assets, and Meteocon vector SVGs.
  */
 
-const CACHE_NAME = 'zephyr-v1.0';
+const CACHE_NAME = 'zephyr-v1.1';
 
 const PRECACHE_URLS = [
   '/',

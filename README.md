@@ -64,6 +64,8 @@ Install test dependencies and run pytest:
 ```bash
 pip install -r requirements-dev.txt
 pytest tests/ -v
+# or via python module:
+python -m pytest tests/ -v
 ```
 
 ## API Endpoints

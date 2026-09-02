@@ -73,6 +73,12 @@ def check_rate_limit():
     ip = raw_ip.split(",")[0].strip() if raw_ip else "unknown"
     now = time.time()
     with RATE_LOCK:
+        # Periodically prune stale IP buckets if tracking dictionary grows large
+        if len(RATE_BUCKETS) > 1000:
+            stale_ips = [k for k, b in RATE_BUCKETS.items() if not b or b[-1] < now - RATE_LIMIT_WINDOW]
+            for k in stale_ips:
+                del RATE_BUCKETS[k]
+
         bucket = RATE_BUCKETS[ip]
         while bucket and bucket[0] < now - RATE_LIMIT_WINDOW:
             bucket.popleft()
@@ -106,11 +112,20 @@ def clean_location_name(name_str):
     if not name_str:
         return ""
     first = str(name_str).split("/")[0].split(";")[0].strip()
-    # Unicode-aware: keeps non-Latin scripts (Cyrillic, Arabic, CJK, ...) intact
-    latin = re.search(r"^[\w\s\-\.\']+", first, re.UNICODE)
+    # Unicode-aware: keeps non-Latin scripts (Cyrillic, Arabic, CJK, ...) and parenthetical qualifiers intact
+    latin = re.search(r"^[\w\s\-\.\'\(\)]+", first, re.UNICODE)
     if latin and len(latin.group(0).strip()) >= 2:
         return latin.group(0).strip()
     return first
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(self)"
+    return response
 
 
 @app.route("/")
