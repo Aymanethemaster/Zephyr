@@ -91,6 +91,12 @@ def test_index(client):
     assert b"Zeph" in res.data
 
 
+def test_index_html(client):
+    res = client.get("/index.html")
+    assert res.status_code == 200
+    assert b"Zeph" in res.data
+
+
 def test_service_worker(client):
     res = client.get("/sw.js")
     assert res.status_code == 200
