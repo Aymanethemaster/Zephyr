@@ -169,6 +169,7 @@ def test_security_headers(client):
     assert res.headers.get("X-Frame-Options") == "DENY"
     assert res.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
     assert "geolocation=(self)" in res.headers.get("Permissions-Policy", "")
+    assert "default-src 'self'" in res.headers.get("Content-Security-Policy", "")
 
 
 def test_rate_limit_pruning():
@@ -274,4 +275,58 @@ def test_reverse_geocode_success_mock(client, monkeypatch):
     data = res.get_json()
     assert data["name"] == "Rabat"
     assert data["country"] == "Morocco"
+
+
+def test_parse_coordinates():
+    from app import parse_coordinates
+    assert parse_coordinates(33.58, -7.60) == (33.58, -7.60)
+    assert parse_coordinates("33.58123", "-7.60123") == (33.5812, -7.6012)
+    assert parse_coordinates(None, 10) == (None, None)
+    assert parse_coordinates("abc", "def") == (None, None)
+    assert parse_coordinates("inf", "0") == (None, None)
+    assert parse_coordinates("-inf", "0") == (None, None)
+    assert parse_coordinates("nan", "0") == (None, None)
+    assert parse_coordinates(91, 0) == (None, None)
+    assert parse_coordinates(-91, 0) == (None, None)
+    assert parse_coordinates(0, 181) == (None, None)
+    assert parse_coordinates(0, -181) == (None, None)
+
+
+def test_weather_rejects_out_of_bounds_coords(client):
+    assert client.get("/api/weather?lat=999&lon=0").status_code == 400
+    assert client.get("/api/weather?lat=0&lon=999").status_code == 400
+    assert client.get("/api/weather?lat=inf&lon=0").status_code == 400
+    assert client.get("/api/weather?lat=nan&lon=0").status_code == 400
+
+
+def test_air_quality_rejects_out_of_bounds_coords(client):
+    assert client.get("/api/air-quality?lat=999&lon=0").status_code == 400
+    assert client.get("/api/air-quality?lat=inf&lon=0").status_code == 400
+
+
+def test_reverse_geocode_rejects_out_of_bounds_coords(client):
+    assert client.get("/api/reverse-geocode?lat=999&lon=0").status_code == 400
+    assert client.get("/api/reverse-geocode?lat=inf&lon=0").status_code == 400
+
+
+def test_geocoding_query_capped(client, monkeypatch):
+    captured_query = None
+
+    def mock_get(url, params=None, **kwargs):
+        nonlocal captured_query
+        if params and "name" in params:
+            captured_query = params["name"]
+        class MockResp:
+            ok = True
+            def json(self):
+                return {"results": []}
+        return MockResp()
+
+    monkeypatch.setattr("app.requests.get", mock_get)
+    long_query = "a" * 250
+    res = client.get(f"/api/geocoding?q={long_query}")
+    assert res.status_code == 200
+    assert captured_query is not None
+    assert len(captured_query) == 100
+
 

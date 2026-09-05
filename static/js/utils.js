@@ -356,6 +356,7 @@ export function getSvgIcon(iconKey, isDay = true, size = 48) {
 }
 
 export function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

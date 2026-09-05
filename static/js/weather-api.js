@@ -78,7 +78,7 @@ export class WeatherApi {
         const contentType = resp.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
           const data = await resp.json();
-          if (Array.isArray(data.results) && data.results.length > 0) {
+          if (Array.isArray(data.results)) {
             return data.results;
           }
         }

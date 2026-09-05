@@ -598,6 +598,7 @@ class WeatherApp {
       name: item.name,
       admin1: item.admin1 || '',
       country: item.country || '',
+      country_code: (item.country_code || '').toUpperCase(),
       latitude: parseFloat(item.latitude),
       longitude: parseFloat(item.longitude),
       timezone: item.timezone || 'auto'
@@ -612,7 +613,8 @@ class WeatherApp {
   // --- Favorites & Recent Searches Management ---
 
   getFavorites() {
-    return SafeStorage.getItem('weather_favorites', []);
+    const favs = SafeStorage.getItem('weather_favorites', []);
+    return Array.isArray(favs) ? favs : [];
   }
 
   isFavorite(loc) {
@@ -683,7 +685,8 @@ class WeatherApp {
   }
 
   getRecentSearches() {
-    return SafeStorage.getItem('weather_recents', []);
+    const recents = SafeStorage.getItem('weather_recents', []);
+    return Array.isArray(recents) ? recents : [];
   }
 
   addRecentSearch(loc) {
@@ -1018,7 +1021,7 @@ class WeatherApp {
       // Calculate bar fill offset & width in percentage
       const barLeft = Math.max(0, Math.min(90, Math.round(((minValNum - weekMin) / weekSpan) * 100)));
       const barRight = Math.max(10, Math.min(100, Math.round(((maxValNum - weekMin) / weekSpan) * 100)));
-      const barWidth = Math.max(10, barRight - barLeft);
+      const barWidth = Math.max(10, Math.min(100 - barLeft, barRight - barLeft));
 
       const row = document.createElement('div');
       row.className = 'daily-row';

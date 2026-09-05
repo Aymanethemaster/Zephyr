@@ -30,6 +30,16 @@ jobs:
         run: |
           python -m py_compile app.py
 
-      - name: Run Unit & Integration Tests
+      - name: Run Python Unit & Integration Tests
         run: |
           python -m pytest tests/ -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run Frontend Utility Tests
+        run: |
+          node --test tests/test_utils.mjs
+

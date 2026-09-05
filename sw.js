@@ -3,7 +3,7 @@
  * Provides offline caching for application shell, static assets, and Meteocon vector SVGs.
  */
 
-const CACHE_NAME = 'zephyr-v1.1';
+const CACHE_NAME = 'zephyr-v1.2';
 
 const PRECACHE_URLS = [
   '/',
@@ -82,6 +82,11 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(request, responseClone);
             });
+            return networkResponse;
+          }
+          // If server returned 5xx or 429, attempt to serve stale cached data if available
+          if (networkResponse && (networkResponse.status >= 500 || networkResponse.status === 429)) {
+            return caches.match(request).then((cached) => cached || networkResponse);
           }
           return networkResponse;
         })

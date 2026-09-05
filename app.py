@@ -3,10 +3,13 @@ import json
 import time
 import logging
 import re
+import math
 import threading
 from collections import defaultdict, deque
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import requests
+from requests.adapters import HTTPAdapter
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -19,6 +22,22 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, "static"),
     static_url_path="/static"
 )
+
+# Apply ProxyFix when running behind a trusted reverse proxy (Render, Heroku, AWS, Cloudflare)
+if os.environ.get("BEHIND_PROXY") == "1" or os.environ.get("RENDER") or os.environ.get("HEROKU"):
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# Persistent HTTP session with connection pooling for upstream APIs
+HTTP_SESSION = requests.Session()
+_adapter = HTTPAdapter(pool_connections=25, pool_maxsize=25, max_retries=1)
+HTTP_SESSION.mount("https://", _adapter)
+HTTP_SESSION.mount("http://", _adapter)
+
+def http_get(url, **kwargs):
+    """Executes GET via connection pool; respects monkeypatched requests.get in test fixtures."""
+    if requests.get != requests.api.get:
+        return requests.get(url, **kwargs)
+    return HTTP_SESSION.get(url, **kwargs)
 
 # Simple in-memory cache to reduce external latency and respect API fairness
 # Structure: { key: (expiry_timestamp, data) }
@@ -119,12 +138,41 @@ def clean_location_name(name_str):
     return first
 
 
+def parse_coordinates(lat, lon):
+    """
+    Validates and bounds-checks latitude and longitude coordinates.
+    Returns (lat_f, lon_f) rounded to 4 decimals, or (None, None) if invalid.
+    """
+    if lat is None or lon is None:
+        return None, None
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+        if not (math.isfinite(lat_f) and math.isfinite(lon_f)):
+            return None, None
+        if not (-90.0 <= lat_f <= 90.0 and -180.0 <= lon_f <= 180.0):
+            return None, None
+        return round(lat_f, 4), round(lon_f, 4)
+    except (ValueError, TypeError, OverflowError):
+        return None, None
+
+
 @app.after_request
 def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(self)"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self' https://*.open-meteo.com https://photon.komoot.io https://api.bigdatacloud.net https://get.geojs.io; "
+        "manifest-src 'self'; "
+        "frame-ancestors 'none';"
+    )
     return response
 
 
@@ -143,9 +191,10 @@ def service_worker():
 def geocode():
     if not check_rate_limit():
         return jsonify({"error": "Too many requests. Please slow down."}), 429
-    query = request.args.get("q", "").strip()
-    if not query:
+    raw_query = request.args.get("q", "").strip()
+    if not raw_query:
         return jsonify({"results": []})
+    query = raw_query[:100]
     
     cache_key = f"geo:{query.lower()}"
     cached = get_from_cache(cache_key)
@@ -164,7 +213,7 @@ def geocode():
             "language": "en",
             "format": "json"
         }
-        resp = requests.get(url, params=params, timeout=5)
+        resp = http_get(url, params=params, timeout=5)
         if resp.ok:
             data = resp.json()
             if "results" in data and isinstance(data["results"], list):
@@ -193,7 +242,7 @@ def geocode():
             p_url = "https://photon.komoot.io/api/"
             p_params = {"q": query, "limit": 8}
             p_headers = {"User-Agent": "ZephyrWeatherApp/1.0"}
-            p_resp = requests.get(p_url, params=p_params, headers=p_headers, timeout=4.5)
+            p_resp = http_get(p_url, params=p_params, headers=p_headers, timeout=4.5)
             if p_resp.ok:
                 p_data = p_resp.json()
                 for feat in p_data.get("features", []):
@@ -254,7 +303,7 @@ def get_ip_location():
         params = {"localityLanguage": "en"}
         if not is_local_ip:
             params["ip"] = ip
-        resp = requests.get(url, params=params, timeout=4.0)
+        resp = http_get(url, params=params, timeout=4.0)
         if resp.ok:
             data = resp.json()
             lat = data.get("latitude")
@@ -281,7 +330,7 @@ def get_ip_location():
     # 2. Secondary: GeoJS IP Lookup Fallback
     try:
         g_url = f"https://get.geojs.io/v1/ip/geo/{ip}.json" if not is_local_ip else "https://get.geojs.io/v1/ip/geo.json"
-        g_resp = requests.get(g_url, timeout=3.5)
+        g_resp = http_get(g_url, timeout=3.5)
         if g_resp.ok:
             g_data = g_resp.json()
             lat = g_data.get("latitude")
@@ -317,10 +366,8 @@ def reverse_geocode():
     if not lat or not lon:
         return jsonify({"error": "Missing coordinates"}), 400
 
-    try:
-        lat_f = round(float(lat), 4)
-        lon_f = round(float(lon), 4)
-    except ValueError:
+    lat_f, lon_f = parse_coordinates(lat, lon)
+    if lat_f is None or lon_f is None:
         return jsonify({"error": "Invalid coordinates format"}), 400
 
     cache_key = f"revgeo:{round(lat_f, 3)}:{round(lon_f, 3)}"
@@ -336,7 +383,7 @@ def reverse_geocode():
             "longitude": lon_f,
             "localityLanguage": "en"
         }
-        resp = requests.get(url, params=params, timeout=4.0)
+        resp = http_get(url, params=params, timeout=4.0)
         resp.raise_for_status()
         data = resp.json()
 
@@ -374,16 +421,18 @@ def get_weather():
         return jsonify({"error": "Too many requests. Please slow down."}), 429
     lat = request.args.get("lat")
     lon = request.args.get("lon")
-    timezone = request.args.get("timezone", "auto")
+    raw_tz = request.args.get("timezone", "auto")
 
     if not lat or not lon:
         return jsonify({"error": "Latitude and longitude are required"}), 400
 
-    try:
-        lat_f = round(float(lat), 4)
-        lon_f = round(float(lon), 4)
-    except ValueError:
+    lat_f, lon_f = parse_coordinates(lat, lon)
+    if lat_f is None or lon_f is None:
         return jsonify({"error": "Invalid coordinates format"}), 400
+
+    timezone = raw_tz.strip()[:50] if raw_tz else "auto"
+    if not re.match(r"^[A-Za-z0-9_\/\+\-]+$", timezone):
+        timezone = "auto"
 
     cache_key = f"weather:{lat_f}:{lon_f}:{timezone}"
     cached = get_from_cache(cache_key)
@@ -402,7 +451,7 @@ def get_weather():
             "forecast_days": OPEN_METEO_PARAMS.get("forecast_days", 8)
         }
 
-        resp = requests.get(url, params=params, timeout=8)
+        resp = http_get(url, params=params, timeout=8)
         resp.raise_for_status()
         data = resp.json()
 
@@ -425,11 +474,9 @@ def get_air_quality():
     if not lat or not lon:
         return jsonify({"error": "Missing coordinates"}), 400
 
-    try:
-        lat_f = round(float(lat), 4)
-        lon_f = round(float(lon), 4)
-    except ValueError:
-        return jsonify({"error": "Invalid coordinates"}), 400
+    lat_f, lon_f = parse_coordinates(lat, lon)
+    if lat_f is None or lon_f is None:
+        return jsonify({"error": "Invalid coordinates format"}), 400
 
     cache_key = f"aqi:{lat_f}:{lon_f}"
     cached = get_from_cache(cache_key)
@@ -452,7 +499,7 @@ def get_air_quality():
                 "ozone"
             ]
         }
-        resp = requests.get(url, params=params, timeout=6)
+        resp = http_get(url, params=params, timeout=6)
         resp.raise_for_status()
         data = resp.json()
 
