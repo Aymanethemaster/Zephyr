@@ -330,3 +330,47 @@ def test_geocoding_query_capped(client, monkeypatch):
     assert len(captured_query) == 100
 
 
+def test_is_local_or_private_ip():
+    from app import is_local_or_private_ip
+    # Loopback and defaults
+    assert is_local_or_private_ip("127.0.0.1") is True
+    assert is_local_or_private_ip("::1") is True
+    assert is_local_or_private_ip("localhost") is True
+    assert is_local_or_private_ip("unknown") is True
+    assert is_local_or_private_ip("") is True
+    assert is_local_or_private_ip(None) is True
+    assert is_local_or_private_ip("invalid-ip-string") is True
+
+    # RFC 1918 Private ranges
+    assert is_local_or_private_ip("10.0.0.1") is True
+    assert is_local_or_private_ip("10.255.255.255") is True
+    assert is_local_or_private_ip("192.168.1.100") is True
+    assert is_local_or_private_ip("172.16.0.1") is True
+    assert is_local_or_private_ip("172.31.255.254") is True
+    assert is_local_or_private_ip("169.254.10.20") is True  # link-local
+
+    # Public IPs (crucially testing 172.x.x.x addresses outside 172.16-31)
+    assert is_local_or_private_ip("172.56.21.89") is False
+    assert is_local_or_private_ip("172.1.0.1") is False
+    assert is_local_or_private_ip("172.32.0.1") is False
+    assert is_local_or_private_ip("172.217.16.206") is False
+    assert is_local_or_private_ip("8.8.8.8") is False
+    assert is_local_or_private_ip("1.1.1.1") is False
+
+
+def test_get_client_ip(monkeypatch):
+    from app import get_client_ip
+
+    # Without BEHIND_PROXY: reads leftmost X-Forwarded-For if present
+    monkeypatch.delenv("BEHIND_PROXY", raising=False)
+    monkeypatch.delenv("RENDER", raising=False)
+    monkeypatch.delenv("HEROKU", raising=False)
+    with app.test_request_context("/", headers={"X-Forwarded-For": "203.0.113.195, 70.41.3.18"}, environ_base={"REMOTE_ADDR": "127.0.0.1"}):
+        assert get_client_ip() == "203.0.113.195"
+
+    # With BEHIND_PROXY: trusts remote_addr (populated by ProxyFix)
+    monkeypatch.setenv("BEHIND_PROXY", "1")
+    with app.test_request_context("/", headers={"X-Forwarded-For": "spoofed.ip.com"}, environ_base={"REMOTE_ADDR": "198.51.100.4"}):
+        assert get_client_ip() == "198.51.100.4"
+
+

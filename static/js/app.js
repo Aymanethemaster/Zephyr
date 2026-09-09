@@ -250,6 +250,7 @@ class WeatherApp {
 
   initNetworkListeners() {
     window.addEventListener('online', () => {
+      WeatherApi.resetParamsCache();
       this.showToast('Internet connection restored. Refreshing weather data...');
       if (this.currentLocation) {
         this.loadLocationWeather(this.currentLocation);
@@ -565,6 +566,17 @@ class WeatherApp {
       } else if (this.autocompleteResults.length > 0) {
         this.selectLocation(this.autocompleteResults[0]);
       }
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      const isQuickAccess = !this.searchInput.value || this.searchInput.value.trim().length < 2;
+      if (isQuickAccess && this.selectedIndex >= 0) {
+        e.preventDefault();
+        const favorites = this.getFavorites();
+        if (this.selectedIndex < favorites.length) {
+          this.removeFavorite(this.selectedIndex);
+        } else {
+          this.removeRecentSearch(this.selectedIndex - favorites.length);
+        }
+      }
     } else if (e.key === 'Escape') {
       this.closeAutocomplete();
     }
@@ -740,7 +752,11 @@ class WeatherApp {
       return;
     }
 
+    this.autocompleteResults = [...favorites, ...recents];
+    this.selectedIndex = -1;
     this.autocompleteDropdown.innerHTML = '';
+
+    let globalIdx = 0;
 
     // 1. Favorites Section
     if (favorites.length > 0) {
@@ -750,15 +766,18 @@ class WeatherApp {
       this.autocompleteDropdown.appendChild(favHeader);
 
       favorites.forEach((item, idx) => {
+        const itemIdx = globalIdx++;
         const li = document.createElement('li');
+        li.id = `autocomplete-opt-${itemIdx}`;
         li.className = 'autocomplete-item';
         li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
         const sub = [item.admin1, item.country].filter(Boolean).join(', ');
         li.innerHTML = `
           <span class="autocomplete-city">⭐ ${escapeHtml(item.name)}</span>
           <div class="dropdown-item-meta">
             ${sub ? `<span class="autocomplete-country">${escapeHtml(sub)}</span>` : ''}
-            <button type="button" class="dropdown-delete-item-btn" title="Remove favorite" aria-label="Remove ${escapeHtml(item.name)} from favorites">
+            <button type="button" class="dropdown-delete-item-btn" title="Remove favorite (or press Delete)" aria-label="Remove ${escapeHtml(item.name)} from favorites">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
@@ -796,15 +815,18 @@ class WeatherApp {
       this.autocompleteDropdown.appendChild(recHeader);
 
       recents.forEach((item, idx) => {
+        const itemIdx = globalIdx++;
         const li = document.createElement('li');
+        li.id = `autocomplete-opt-${itemIdx}`;
         li.className = 'autocomplete-item';
         li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
         const sub = [item.admin1, item.country].filter(Boolean).join(', ');
         li.innerHTML = `
           <span class="autocomplete-city">${escapeHtml(item.name)}</span>
           <div class="dropdown-item-meta">
             ${sub ? `<span class="autocomplete-country">${escapeHtml(sub)}</span>` : ''}
-            <button type="button" class="dropdown-delete-item-btn" title="Remove from recents" aria-label="Remove ${escapeHtml(item.name)} from recents">
+            <button type="button" class="dropdown-delete-item-btn" title="Remove from recents (or press Delete)" aria-label="Remove ${escapeHtml(item.name)} from recents">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>

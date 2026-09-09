@@ -38,6 +38,14 @@ export class WeatherApi {
   }
 
   /**
+   * Resets the shared parameter cache so that fresh configurations can be
+   * re-fetched from /static/js/weather-params.json (e.g. after regaining internet).
+   */
+  static resetParamsCache() {
+    this._paramsCache = null;
+  }
+
+  /**
    * Helper fetch with timeout and error handling
    */
   static async _fetchWithTimeout(url, timeoutMs = 8000, signal = null) {

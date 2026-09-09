@@ -5,6 +5,7 @@ import logging
 import re
 import math
 import threading
+import ipaddress
 from collections import defaultdict, deque
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import requests
@@ -87,9 +88,34 @@ RATE_LIMIT_WINDOW = 60     # ...per this many seconds
 RATE_BUCKETS = defaultdict(deque)
 RATE_LOCK = threading.Lock()
 
-def check_rate_limit():
+def get_client_ip() -> str:
+    """
+    Extracts the client's IP address safely.
+    When running behind a trusted proxy (ProxyFix), request.remote_addr is already
+    populated with the verified peer IP.
+    """
+    if os.environ.get("BEHIND_PROXY") == "1" or os.environ.get("RENDER") or os.environ.get("HEROKU"):
+        return request.remote_addr or "unknown"
     raw_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-    ip = raw_ip.split(",")[0].strip() if raw_ip else "unknown"
+    return raw_ip.split(",")[0].strip() if raw_ip else "unknown"
+
+
+def is_local_or_private_ip(ip_str: str) -> bool:
+    """
+    Checks whether an IP is loopback, link-local, private (RFC 1918), or reserved.
+    Uses Python's ipaddress module for exact CIDR matching to prevent over-matching.
+    """
+    if not ip_str or ip_str in ("localhost", "unknown"):
+        return True
+    try:
+        ip_obj = ipaddress.ip_address(ip_str)
+        return bool(ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved or ip_obj.is_link_local)
+    except ValueError:
+        return True
+
+
+def check_rate_limit():
+    ip = get_client_ip()
     now = time.time()
     with RATE_LOCK:
         # Periodically prune stale IP buckets if tracking dictionary grows large
@@ -289,9 +315,8 @@ def get_ip_location():
     if not check_rate_limit():
         return jsonify({"error": "Too many requests. Please slow down."}), 429
 
-    raw_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-    ip = raw_ip.split(",")[0].strip() if raw_ip else "unknown"
-    is_local_ip = ip in ("127.0.0.1", "localhost", "::1", "unknown") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.")
+    ip = get_client_ip()
+    is_local_ip = is_local_or_private_ip(ip)
     cache_key = f"iploc:{ip}"
     cached = get_from_cache(cache_key)
     if cached:

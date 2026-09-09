@@ -3,7 +3,7 @@
  * Provides offline caching for application shell, static assets, and Meteocon vector SVGs.
  */
 
-const CACHE_NAME = 'zephyr-v1.2';
+const CACHE_NAME = 'zephyr-v1.3';
 
 const PRECACHE_URLS = [
   '/',
@@ -14,6 +14,8 @@ const PRECACHE_URLS = [
   '/static/js/weather-api.js',
   '/static/js/weather-params.json',
   '/static/manifest.json',
+  '/static/icons/icon-192.png',
+  '/static/icons/icon-512.png',
   '/static/icons/overcast-day.svg',
   '/static/icons/clear-day.svg',
   '/static/icons/clear-night.svg',
