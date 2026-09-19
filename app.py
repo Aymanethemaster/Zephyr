@@ -102,9 +102,10 @@ def get_client_ip() -> str:
     return request.remote_addr or "unknown"
 
 
-def is_local_or_private_ip(ip_str: str) -> bool:
+def is_local_or_private_ip(ip_str: "str | None") -> bool:
     """
     Checks whether an IP is loopback, link-local, private (RFC 1918), or reserved.
+    Accepts None/empty/garbage input and treats it as non-public (returns True).
     Uses Python's ipaddress module for exact CIDR matching to prevent over-matching.
     """
     if not ip_str or ip_str in ("localhost", "unknown"):
