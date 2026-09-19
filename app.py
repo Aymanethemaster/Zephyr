@@ -91,13 +91,15 @@ RATE_LOCK = threading.Lock()
 def get_client_ip() -> str:
     """
     Extracts the client's IP address safely.
-    When running behind a trusted proxy (ProxyFix), request.remote_addr is already
-    populated with the verified peer IP.
+    X-Forwarded-For is only trusted when the app is explicitly running behind a
+    trusted reverse proxy (BEHIND_PROXY/RENDER/HEROKU), where ProxyFix has already
+    resolved request.remote_addr to the verified client IP. On direct deployments
+    the header is ignored because it is trivially spoofable, which would let a
+    client rotate fake IPs to bypass the per-IP rate limit.
     """
     if os.environ.get("BEHIND_PROXY") == "1" or os.environ.get("RENDER") or os.environ.get("HEROKU"):
         return request.remote_addr or "unknown"
-    raw_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-    return raw_ip.split(",")[0].strip() if raw_ip else "unknown"
+    return request.remote_addr or "unknown"
 
 
 def is_local_or_private_ip(ip_str: str) -> bool:
@@ -189,6 +191,9 @@ def set_security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(self)"
+    # Enforce HTTPS on deployments served over TLS (ignored on plain HTTP)
+    if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self'; "
@@ -483,11 +488,12 @@ def get_weather():
         set_to_cache(cache_key, data, CACHE_TTL_WEATHER)
         return jsonify(data)
     except requests.exceptions.RequestException as e:
+        # Log the full exception server-side but never leak internals to the client
         logger.error(f"Open-Meteo forecast API error: {e}")
-        return jsonify({"error": "Failed to fetch weather forecast data", "details": str(e)}), 502
+        return jsonify({"error": "Failed to fetch weather forecast data"}), 502
     except Exception as e:
         logger.error(f"Unexpected error in get_weather: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/air-quality")

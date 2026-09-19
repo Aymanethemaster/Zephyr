@@ -172,6 +172,28 @@ def test_security_headers(client):
     assert "default-src 'self'" in res.headers.get("Content-Security-Policy", "")
 
 
+def test_hsts_header_on_https(client):
+    # Plain HTTP responses do not force HSTS
+    assert "Strict-Transport-Security" not in client.get("/api/health").headers
+    # HTTPS (or proxied HTTPS) responses enforce HSTS
+    res = client.get("/api/health", base_url="https://localhost")
+    assert "max-age=31536000" in res.headers.get("Strict-Transport-Security", "")
+    res2 = client.get("/api/health", headers={"X-Forwarded-Proto": "https"})
+    assert "max-age=31536000" in res2.headers.get("Strict-Transport-Security", "")
+
+
+def test_weather_error_does_not_leak_details(client, monkeypatch):
+    def boom(url, params=None, **kwargs):
+        raise RuntimeError("sensitive internal path C:\\secret\\traceback")
+
+    monkeypatch.setattr("app.requests.get", boom)
+    res = client.get("/api/weather?lat=40.7&lon=-74.0")
+    assert res.status_code == 500
+    body = res.get_json()
+    assert "details" not in body
+    assert "sensitive" not in str(body)
+
+
 def test_rate_limit_pruning():
     from app import RATE_BUCKETS, check_rate_limit
     from collections import deque
@@ -361,12 +383,12 @@ def test_is_local_or_private_ip():
 def test_get_client_ip(monkeypatch):
     from app import get_client_ip
 
-    # Without BEHIND_PROXY: reads leftmost X-Forwarded-For if present
+    # Without BEHIND_PROXY: ignores spoofable X-Forwarded-For, uses remote_addr
     monkeypatch.delenv("BEHIND_PROXY", raising=False)
     monkeypatch.delenv("RENDER", raising=False)
     monkeypatch.delenv("HEROKU", raising=False)
     with app.test_request_context("/", headers={"X-Forwarded-For": "203.0.113.195, 70.41.3.18"}, environ_base={"REMOTE_ADDR": "127.0.0.1"}):
-        assert get_client_ip() == "203.0.113.195"
+        assert get_client_ip() == "127.0.0.1"
 
     # With BEHIND_PROXY: trusts remote_addr (populated by ProxyFix)
     monkeypatch.setenv("BEHIND_PROXY", "1")

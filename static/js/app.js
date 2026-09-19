@@ -293,95 +293,105 @@ class WeatherApp {
   }
 
   async initUserLocation() {
-    // 1. If returning user has a previously loaded location, restore it immediately
-    const savedLoc = SafeStorage.getItem('weather_last_loc');
-    if (savedLoc && typeof savedLoc.latitude === 'number' && typeof savedLoc.longitude === 'number') {
-      this.currentLocation = savedLoc;
-      this.loadLocationWeather(this.currentLocation);
+    // On every load (refresh or first visit) always resolve the user's current
+    // location instead of restoring a stale saved one:
+    //   1. Show IP-based location instantly so the UI populates immediately.
+    //   2. If GPS permission is already granted, silently upgrade to precise GPS.
+    //   3. On a true first visit (permission undecided), ask for GPS once and
+    //      fall back to the IP location already shown if denied/unavailable.
+    const hasShownLocation = await this.tryIpLocation();
 
-      // If geolocation permission was already granted in this browser, check silently in background
-      if (navigator.permissions && navigator.geolocation) {
-        try {
-          const status = await navigator.permissions.query({ name: 'geolocation' });
-          if (status.state === 'granted') {
-            navigator.geolocation.getCurrentPosition(
-              async (pos) => {
-                const { latitude, longitude } = pos.coords;
-                const dLat = Math.abs((this.currentLocation?.latitude ?? 0) - latitude);
-                const dLon = Math.abs((this.currentLocation?.longitude ?? 0) - longitude);
-                if (dLat > 0.15 || dLon > 0.15) {
-                  try {
-                    const locInfo = await WeatherApi.reverseGeocode(latitude, longitude);
-                    this.currentLocation = {
-                      name: locInfo.name || 'My Location',
-                      admin1: locInfo.admin1 || '',
-                      country: locInfo.country || '',
-                      country_code: locInfo.country_code || '',
-                      latitude: locInfo.latitude || latitude,
-                      longitude: locInfo.longitude || longitude,
-                      timezone: 'auto'
-                    };
-                    this.loadLocationWeather(this.currentLocation);
-                  } catch {}
-                }
-              },
-              () => {},
-              { timeout: 8000, enableHighAccuracy: false, maximumAge: 300000 }
-            );
-          }
-        } catch {}
-      }
-      return;
-    }
-
-    // 2. First-time user: Request GPS location cleanly without flashing an approximate IP location
+    let permissionState = 'unavailable';
     if (navigator.geolocation) {
       if (navigator.permissions && navigator.permissions.query) {
         try {
-          const status = await navigator.permissions.query({ name: 'geolocation' });
-          if (status.state === 'denied') {
-            await this.fallbackToIpLocation();
-            return;
-          }
-        } catch {}
+          permissionState = (await navigator.permissions.query({ name: 'geolocation' })).state;
+        } catch {
+          permissionState = 'prompt';
+        }
+      } else {
+        permissionState = 'prompt';
       }
+    }
 
+    // Permission previously granted → refresh GPS silently in the background.
+    if (permissionState === 'granted') {
+      this.trySilentGpsRefresh();
+      return;
+    }
+
+    // Permission undecided (first visit) → request GPS once; on failure keep/try IP.
+    if (permissionState === 'prompt' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          const { latitude, longitude } = pos.coords;
-          try {
-            const locInfo = await WeatherApi.reverseGeocode(latitude, longitude);
-            this.currentLocation = {
-              name: locInfo.name || 'My Location',
-              admin1: locInfo.admin1 || '',
-              country: locInfo.country || '',
-              country_code: locInfo.country_code || '',
-              latitude: locInfo.latitude || latitude,
-              longitude: locInfo.longitude || longitude,
-              timezone: 'auto'
-            };
-            this.loadLocationWeather(this.currentLocation);
-            this.showToast(`Located: ${this.currentLocation.name} 📍`);
-          } catch (err) {
-            console.warn('Reverse geocode error:', err);
-            this.currentLocation = {
-              name: 'My Location',
-              latitude,
-              longitude,
-              timezone: 'auto'
-            };
-            this.loadLocationWeather(this.currentLocation);
-          }
+          await this.applyGpsPosition(pos);
+          this.showToast(`Located: ${this.currentLocation.name} 📍`);
         },
         async (err) => {
-          console.info('GPS unavailable or denied, falling back to IP location:', err?.message || err);
-          await this.fallbackToIpLocation();
+          console.info('GPS unavailable or denied, using IP location:', err?.message || err);
+          if (!hasShownLocation) await this.fallbackToIpLocation();
         },
         { timeout: 12000, enableHighAccuracy: false, maximumAge: 60000 }
       );
-    } else {
+      return;
+    }
+
+    // GPS denied or unsupported → guarantee some location is shown.
+    if (!hasShownLocation) {
       await this.fallbackToIpLocation();
     }
+  }
+
+  // Fetch IP-based location and render it. Returns true when a location was shown.
+  async tryIpLocation() {
+    try {
+      const ipLoc = await WeatherApi.getIpLocation();
+      if (ipLoc && typeof ipLoc.latitude === 'number' && typeof ipLoc.longitude === 'number') {
+        this.currentLocation = ipLoc;
+        this.loadLocationWeather(this.currentLocation);
+        return true;
+      }
+    } catch (e) {
+      console.warn('IP geolocation lookup warning:', e);
+    }
+    return false;
+  }
+
+  // Resolve a GPS position to a named location and render it.
+  async applyGpsPosition(pos) {
+    const { latitude, longitude } = pos.coords;
+    try {
+      const locInfo = await WeatherApi.reverseGeocode(latitude, longitude);
+      this.currentLocation = {
+        name: locInfo.name || 'My Location',
+        admin1: locInfo.admin1 || '',
+        country: locInfo.country || '',
+        country_code: locInfo.country_code || '',
+        latitude: locInfo.latitude || latitude,
+        longitude: locInfo.longitude || longitude,
+        timezone: 'auto'
+      };
+    } catch (err) {
+      console.warn('Reverse geocode error:', err);
+      this.currentLocation = { name: 'My Location', latitude, longitude, timezone: 'auto' };
+    }
+    this.loadLocationWeather(this.currentLocation);
+  }
+
+  // Silently refresh with precise GPS when permission was already granted.
+  trySilentGpsRefresh() {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const dLat = Math.abs((this.currentLocation?.latitude ?? 0) - latitude);
+        const dLon = Math.abs((this.currentLocation?.longitude ?? 0) - longitude);
+        if (dLat > 0.05 || dLon > 0.05) {
+          try { await this.applyGpsPosition(pos); } catch {}
+        }
+      },
+      () => {},
+      { timeout: 8000, enableHighAccuracy: false, maximumAge: 300000 }
+    );
   }
 
   async fallbackToIpLocation() {
