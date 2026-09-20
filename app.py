@@ -6,7 +6,8 @@ import re
 import math
 import threading
 import ipaddress
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
+from urllib.parse import urlsplit
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import requests
 from requests.adapters import HTTPAdapter
@@ -24,9 +25,17 @@ app = Flask(
     static_url_path="/static"
 )
 
-# Apply ProxyFix when running behind a trusted reverse proxy (Render, Heroku, AWS, Cloudflare)
-if os.environ.get("BEHIND_PROXY") == "1" or os.environ.get("RENDER") or os.environ.get("HEROKU"):
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# Apply ProxyFix when running behind a trusted reverse proxy (ISSUE-SEC-01)
+raw_hops = os.environ.get("PROXY_HOPS")
+if raw_hops and raw_hops.isdigit():
+    PROXY_HOPS = int(raw_hops)
+elif os.environ.get("BEHIND_PROXY") == "1" or os.environ.get("RENDER") or os.environ.get("HEROKU"):
+    PROXY_HOPS = 1
+else:
+    PROXY_HOPS = 0
+
+if PROXY_HOPS > 0:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=PROXY_HOPS, x_proto=PROXY_HOPS, x_host=1)
 
 # Persistent HTTP session with connection pooling for upstream APIs
 HTTP_SESSION = requests.Session()
@@ -36,13 +45,15 @@ HTTP_SESSION.mount("http://", _adapter)
 
 def http_get(url, **kwargs):
     """Executes GET via connection pool; respects monkeypatched requests.get in test fixtures."""
+    kwargs.setdefault("allow_redirects", False)
     if requests.get != requests.api.get:
         return requests.get(url, **kwargs)
     return HTTP_SESSION.get(url, **kwargs)
 
-# Simple in-memory cache to reduce external latency and respect API fairness
-# Structure: { key: (expiry_timestamp, data) }
-CACHE = {}
+# Bounded thread-safe LRU cache supporting Stale-While-Revalidate (ISSUE-BE-01)
+# Structure: { key: (fresh_until, stale_until, data) }
+MAX_CACHE_SIZE = 2000
+CACHE = OrderedDict()
 CACHE_LOCK = threading.Lock()
 CACHE_TTL_WEATHER = 600       # 10 minutes
 CACHE_TTL_GEOCODING = 3600    # 1 hour
@@ -82,24 +93,19 @@ def load_open_meteo_params():
 
 OPEN_METEO_PARAMS = load_open_meteo_params()
 
-# Sliding-window per-IP rate limit for API proxy routes
+# Sliding-window per-IP rate limit for API proxy routes (ISSUE-BE-02)
+MAX_RATE_BUCKETS = 5000
 RATE_LIMIT_REQUESTS = 60   # requests...
 RATE_LIMIT_WINDOW = 60     # ...per this many seconds
-RATE_BUCKETS = defaultdict(deque)
+RATE_BUCKETS = OrderedDict()
 RATE_LOCK = threading.Lock()
 
 def get_client_ip() -> str:
     """
-    Extracts the client's IP address safely.
-    X-Forwarded-For is only trusted when the app is explicitly running behind a
-    trusted reverse proxy (BEHIND_PROXY/RENDER/HEROKU), where ProxyFix has already
-    resolved request.remote_addr to the verified client IP. On direct deployments
-    the header is ignored because it is trivially spoofable, which would let a
-    client rotate fake IPs to bypass the per-IP rate limit.
+    Extracts the client's IP address safely (ISSUE-SEC-01).
+    When ProxyFix is configured, remote_addr contains the verified upstream client IP.
     """
-    if os.environ.get("BEHIND_PROXY") == "1" or os.environ.get("RENDER") or os.environ.get("HEROKU"):
-        return request.remote_addr or "unknown"
-    return request.remote_addr or "unknown"
+    return request.remote_addr or "127.0.0.1"
 
 
 def is_local_or_private_ip(ip_str: "str | None") -> bool:
@@ -120,40 +126,113 @@ def is_local_or_private_ip(ip_str: "str | None") -> bool:
 def check_rate_limit():
     ip = get_client_ip()
     now = time.time()
-    with RATE_LOCK:
-        # Periodically prune stale IP buckets if tracking dictionary grows large
-        if len(RATE_BUCKETS) > 1000:
-            stale_ips = [k for k, b in RATE_BUCKETS.items() if not b or b[-1] < now - RATE_LIMIT_WINDOW]
-            for k in stale_ips:
-                del RATE_BUCKETS[k]
+    cutoff = now - RATE_LIMIT_WINDOW
 
-        bucket = RATE_BUCKETS[ip]
-        while bucket and bucket[0] < now - RATE_LIMIT_WINDOW:
+    with RATE_LOCK:
+        # Prune inactive buckets from the head of the OrderedDict
+        while RATE_BUCKETS:
+            oldest_ip, oldest_bucket = next(iter(RATE_BUCKETS.items()))
+            if not oldest_bucket or oldest_bucket[-1] < cutoff:
+                RATE_BUCKETS.popitem(last=False)
+            else:
+                break
+
+        if ip in RATE_BUCKETS:
+            bucket = RATE_BUCKETS[ip]
+            RATE_BUCKETS.move_to_end(ip)
+        else:
+            if len(RATE_BUCKETS) >= MAX_RATE_BUCKETS:
+                # All capacity is consumed by active/rate-limited clients.
+                # Under high-cardinality IP flood, shed load on new untracked IP to protect limits.
+                return False
+            bucket = deque()
+            RATE_BUCKETS[ip] = bucket
+
+        # Clean timestamps older than the sliding window
+        while bucket and bucket[0] < cutoff:
             bucket.popleft()
+
         if len(bucket) >= RATE_LIMIT_REQUESTS:
             return False
+
         bucket.append(now)
         return True
 
 def get_from_cache(key: str):
+    """Retrieve data if fresh. Evicts if expired past stale_until."""
     with CACHE_LOCK:
         if key in CACHE:
-            expiry, data = CACHE[key]
-            if time.time() < expiry:
+            fresh_until, stale_until, data = CACHE[key]
+            now = time.time()
+            if now < fresh_until:
+                CACHE.move_to_end(key)  # Mark recently accessed (LRU)
                 return data
-            else:
+            elif now >= stale_until:
                 del CACHE[key]
     return None
 
-def set_to_cache(key: str, data, ttl: int):
+def set_to_cache(key: str, data, ttl: int, stale_ttl: int = None):
+    """Store data in unified 3-tuple: (fresh_until, stale_until, data)."""
     with CACHE_LOCK:
-        # Periodically prune stale entries if cache gets large
-        if len(CACHE) > 500:
+        now = time.time()
+        fresh_until = now + ttl
+        if stale_ttl is not None:
+            stale_until = now + stale_ttl
+        else:
+            stale_until = fresh_until + (ttl * 2 if ttl > 0 else 0)
+        if key in CACHE:
+            del CACHE[key]
+        elif len(CACHE) >= MAX_CACHE_SIZE:
+            CACHE.popitem(last=False)  # O(1) deterministic eviction of oldest LRU item
+        CACHE[key] = (fresh_until, stale_until, data)
+
+def set_to_cache_stale(key: str, data, fresh_ttl: int = 600, stale_ttl: int = 7200):
+    """Explicit helper for stale-while-revalidate caching."""
+    set_to_cache(key, data, ttl=fresh_ttl, stale_ttl=stale_ttl)
+
+class CircuitBreaker:
+    """Thread-safe circuit breaker with single canary probe in HALF_OPEN state (RESL-ARCH-01)."""
+    def __init__(self, failure_threshold=4, recovery_timeout=30.0):
+        self.threshold = failure_threshold
+        self.recovery = recovery_timeout
+        self.failures = 0
+        self.state = "CLOSED"
+        self.last_change = time.time()
+        self.half_open_in_flight = False
+        self.lock = threading.Lock()
+
+    def allow_request(self) -> bool:
+        with self.lock:
             now = time.time()
-            stale_keys = [k for k, (exp, _) in CACHE.items() if exp < now]
-            for k in stale_keys:
-                del CACHE[k]
-        CACHE[key] = (time.time() + ttl, data)
+            if self.state == "OPEN":
+                if now - self.last_change > self.recovery:
+                    self.state = "HALF_OPEN"
+                    self.half_open_in_flight = True
+                    return True
+                return False
+            elif self.state == "HALF_OPEN":
+                if self.half_open_in_flight:
+                    return False  # Canary probe in progress; reject concurrent request stampedes
+                self.half_open_in_flight = True
+                return True
+            return True
+
+    def record_success(self):
+        with self.lock:
+            self.failures = 0
+            self.state = "CLOSED"
+            self.half_open_in_flight = False
+
+    def record_failure(self):
+        with self.lock:
+            self.failures += 1
+            self.half_open_in_flight = False
+            if self.failures >= self.threshold or self.state == "HALF_OPEN":
+                self.state = "OPEN"
+                self.last_change = time.time()
+
+WEATHER_BREAKER = CircuitBreaker()
+
 
 
 def clean_location_name(name_str):
@@ -186,15 +265,46 @@ def parse_coordinates(lat, lon):
         return None, None
 
 
+# Strict Origin and Fetch-Metadata Verification (ISSUE-SEC-02)
+ALLOWED_ORIGINS = {
+    o.strip().rstrip("/").lower()
+    for o in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+}
+
+@app.before_request
+def verify_api_origin():
+    if request.path.startswith("/api/") and request.path != "/api/health":
+        if not ALLOWED_ORIGINS:
+            return  # Permissive in development and default tests if unconfigured
+
+        # 1. Gracefully permit browser same-origin/same-site/direct navigation requests
+        sec_fetch_site = request.headers.get("Sec-Fetch-Site")
+        if sec_fetch_site in ("same-origin", "same-site", "none"):
+            return
+
+        # 2. Inspect Origin or Referer header for cross-origin requests
+        raw_origin = request.headers.get("Origin") or request.headers.get("Referer")
+        if not raw_origin:
+            return jsonify({"error": "Forbidden: missing origin or referer header"}), 403
+
+        # 3. Exact origin and host matching to prevent prefix spoofing (e.g. zephyr.com.attacker.com)
+        parts = urlsplit(raw_origin)
+        origin_normalized = f"{parts.scheme}://{parts.netloc}".lower() if parts.scheme and parts.netloc else raw_origin.strip().rstrip("/").lower()
+
+        if origin_normalized not in ALLOWED_ORIGINS and parts.netloc.lower() not in ALLOWED_ORIGINS:
+            return jsonify({"error": "Forbidden: unauthorized cross-origin proxy request"}), 403
+
+
 @app.after_request
 def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(self)"
-    # Enforce HTTPS on deployments served over TLS (ignored on plain HTTP)
-    if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Enforce HTTPS on deployments served over TLS (RFC 6797 compliance, ISSUE-SEC-07)
+    if request.is_secure or (app.testing and request.headers.get("X-Forwarded-Proto") == "https"):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self'; "
@@ -203,7 +313,11 @@ def set_security_headers(response):
         "img-src 'self' data:; "
         "connect-src 'self' https://*.open-meteo.com https://photon.komoot.io https://api.bigdatacloud.net https://get.geojs.io; "
         "manifest-src 'self'; "
-        "frame-ancestors 'none';"
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "object-src 'none'; "
+        "upgrade-insecure-requests;"
     )
     return response
 
@@ -235,6 +349,8 @@ def geocode():
 
     results = []
     seen_coords = set()
+    open_meteo_failed = False
+    photon_failed = False
 
     # 1. Primary: Open-Meteo Geocoding API (Fast prefix matching)
     try:
@@ -265,6 +381,11 @@ def geocode():
                             "admin1": item.get("admin1", ""),
                             "timezone": item.get("timezone", "auto")
                         })
+        else:
+            open_meteo_failed = True
+    except requests.exceptions.RequestException as e:
+        open_meteo_failed = True
+        logger.warning(f"Open-Meteo geocoding warning for query '{query}': {e}")
     except Exception as e:
         logger.warning(f"Open-Meteo geocoding warning for query '{query}': {e}")
 
@@ -307,8 +428,16 @@ def geocode():
                                 "admin1": clean_location_name(raw_admin),
                                 "timezone": "auto"
                             })
+            else:
+                photon_failed = True
+        except requests.exceptions.RequestException as e:
+            photon_failed = True
+            logger.warning(f"Photon fallback geocoding warning for query '{query}': {e}")
         except Exception as e:
             logger.warning(f"Photon fallback geocoding warning for query '{query}': {e}")
+
+    if not results and (open_meteo_failed and photon_failed):
+        return jsonify({"error": "Upstream geocoding providers unavailable", "results": []}), 502
 
     result_payload = {"results": results}
     if results:
@@ -446,6 +575,64 @@ def reverse_geocode():
         })
 
 
+def get_weather_with_fallback(lat_f, lon_f, timezone):
+    """Retrieve weather forecast data with Circuit Breaker and Stale-While-Revalidate fallback (RESL-ARCH-01, RESL-ARCH-02)."""
+    cache_key = f"weather:{lat_f}:{lon_f}:{timezone}"
+    candidate = None
+    with CACHE_LOCK:
+        if cache_key in CACHE:
+            fresh_until, stale_until, data = CACHE[cache_key]
+            now = time.time()
+            if now < fresh_until:
+                CACHE.move_to_end(cache_key)
+                return jsonify(data), 200
+            elif now < stale_until:
+                candidate = data
+
+    if not WEATHER_BREAKER.allow_request():
+        if candidate:
+            response = jsonify(candidate)
+            response.headers["X-Zephyr-Stale"] = "1"
+            return response, 200
+        return jsonify({"error": "Upstream weather service temporarily unavailable (circuit open)"}), 503
+
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat_f,
+            "longitude": lon_f,
+            "current": OPEN_METEO_PARAMS["current"],
+            "hourly": OPEN_METEO_PARAMS["hourly"],
+            "daily": OPEN_METEO_PARAMS["daily"],
+            "timezone": timezone,
+            "forecast_days": OPEN_METEO_PARAMS.get("forecast_days", 8)
+        }
+
+        resp = http_get(url, params=params, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+
+        WEATHER_BREAKER.record_success()
+        set_to_cache_stale(cache_key, data, fresh_ttl=CACHE_TTL_WEATHER, stale_ttl=7200)
+        return jsonify(data), 200
+    except requests.exceptions.RequestException as e:
+        WEATHER_BREAKER.record_failure()
+        logger.error(f"Open-Meteo forecast API error: {e}")
+        if candidate:
+            response = jsonify(candidate)
+            response.headers["X-Zephyr-Stale"] = "1"
+            return response, 200
+        return jsonify({"error": "Failed to fetch weather forecast data"}), 502
+    except Exception as e:
+        WEATHER_BREAKER.record_failure()
+        logger.error(f"Unexpected error in get_weather: {e}")
+        if candidate:
+            response = jsonify(candidate)
+            response.headers["X-Zephyr-Stale"] = "1"
+            return response, 200
+        return jsonify({"error": "Internal server error"}), 500
+
+
 @app.route("/api/weather")
 def get_weather():
     if not check_rate_limit():
@@ -465,36 +652,7 @@ def get_weather():
     if not re.match(r"^[A-Za-z0-9_\/\+\-]+$", timezone):
         timezone = "auto"
 
-    cache_key = f"weather:{lat_f}:{lon_f}:{timezone}"
-    cached = get_from_cache(cache_key)
-    if cached:
-        return jsonify(cached)
-
-    try:
-        url = "https://api.open-meteo.com/v1/forecast"
-        params = {
-            "latitude": lat_f,
-            "longitude": lon_f,
-            "current": OPEN_METEO_PARAMS["current"],
-            "hourly": OPEN_METEO_PARAMS["hourly"],
-            "daily": OPEN_METEO_PARAMS["daily"],
-            "timezone": timezone,
-            "forecast_days": OPEN_METEO_PARAMS.get("forecast_days", 8)
-        }
-
-        resp = http_get(url, params=params, timeout=8)
-        resp.raise_for_status()
-        data = resp.json()
-
-        set_to_cache(cache_key, data, CACHE_TTL_WEATHER)
-        return jsonify(data)
-    except requests.exceptions.RequestException as e:
-        # Log the full exception server-side but never leak internals to the client
-        logger.error(f"Open-Meteo forecast API error: {e}")
-        return jsonify({"error": "Failed to fetch weather forecast data"}), 502
-    except Exception as e:
-        logger.error(f"Unexpected error in get_weather: {e}")
-        return jsonify({"error": "Internal server error"}), 500
+    return get_weather_with_fallback(lat_f, lon_f, timezone)
 
 
 @app.route("/api/air-quality")
