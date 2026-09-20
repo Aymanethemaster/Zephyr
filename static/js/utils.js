@@ -174,8 +174,8 @@ export function getAqiDetails(aqi) {
   if (aqi <= 100) return { text: 'Moderate', color: '#facc15', description: 'Acceptable; sensitive individuals should take precautions.' };
   if (aqi <= 150) return { text: 'Unhealthy for Sensitive Groups', color: '#fb923c', description: 'Members of sensitive groups may experience health effects.' };
   if (aqi <= 200) return { text: 'Unhealthy', color: '#f87171', description: 'Some members of the general public may experience health effects.' };
-  if (aqi <= 300) return { text: 'Very Unhealthy', color: '#a855f7', description: 'Health alert: risk of health effects is increased for everyone.' };
-  return { text: 'Hazardous', color: '#e11d48', description: 'Health warning: emergency conditions.' };
+  if (aqi <= 300) return { text: 'Very Unhealthy', color: '#c084fc', description: 'Health alert: risk of health effects is increased for everyone.' };
+  return { text: 'Hazardous', color: '#fb7185', description: 'Health warning: emergency conditions.' };
 }
 
 export function formatTimeOnly(isoString) {
@@ -344,7 +344,8 @@ export function getSvgIcon(iconKey, isDay = true, size = 48) {
   return `
     <img 
       src="/static/icons/${fileName}" 
-      alt="${iconKey}" 
+      alt="" 
+      aria-hidden="true"
       width="${size}" 
       height="${size}" 
       class="weather-icon-img" 

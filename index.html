@@ -23,6 +23,9 @@
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+  <!-- Skip link for keyboard users (WCAG 2.4.1) -->
+  <a href="#main-content" class="skip-link">Skip to weather forecast</a>
+
   <!-- Ambient Atmospheric Glow Orbs -->
   <div class="ambient-glow" aria-hidden="true">
     <div class="ambient-glow-orb ambient-glow-orb-1"></div>
@@ -61,6 +64,7 @@
               maxlength="100"
               role="combobox"
               aria-autocomplete="list"
+              aria-haspopup="listbox"
               aria-expanded="false"
               aria-controls="autocomplete-dropdown"
               aria-label="Search city location (Press / or Ctrl+K to focus)"
@@ -80,7 +84,7 @@
         <div class="header-actions">
           <!-- GPS Geolocation Button with Real Compass Icon -->
           <button id="gps-btn" class="icon-btn" aria-label="Detect current location (GPS)" title="Detect current location (GPS)">
-            <img src="/static/icons/compass.svg" width="20" height="20" alt="GPS" class="action-icon" />
+            <img src="/static/icons/compass.svg" width="20" height="20" alt="" aria-hidden="true" class="action-icon" />
           </button>
 
           <!-- Temperature Unit Toggle -->
@@ -93,7 +97,7 @@
     </header>
 
     <!-- Main Content Area Grid -->
-    <main class="weather-main-grid">
+    <main class="weather-main-grid" id="main-content" tabindex="-1">
       <!-- 1. Hero Current Weather Card -->
       <section class="glass-card hero-card" id="hero-card" aria-labelledby="hero-location-name">
         <div class="hero-location-header">
@@ -163,7 +167,7 @@
       <section class="glass-card hourly-forecast-section" id="hourly-forecast-section" aria-label="24-Hour Hourly Forecast">
         <div class="section-header">
           <h3 class="section-title">
-            <img src="/static/icons/horizon.svg" width="20" height="20" alt="Hourly" class="section-icon" />
+            <img src="/static/icons/horizon.svg" width="20" height="20" alt="" aria-hidden="true" class="section-icon" />
             24-Hour Forecast
           </h3>
           <div class="hourly-scroll-controls" aria-label="Hourly forecast navigation">
@@ -190,7 +194,7 @@
       <section class="glass-card daily-forecast-card" id="daily-forecast-card" aria-label="7-Day Daily Forecast">
         <div class="section-header">
           <h3 class="section-title">
-            <img src="/static/icons/thermometer.svg" width="20" height="20" alt="7-Day" class="section-icon" />
+            <img src="/static/icons/thermometer.svg" width="20" height="20" alt="" aria-hidden="true" class="section-icon" />
             7-Day Forecast
           </h3>
         </div>
@@ -202,11 +206,11 @@
         <!-- 1. UV Index -->
         <article class="glass-card metric-card">
           <div class="metric-header">
-            <span class="metric-title">UV Index</span>
+            <h4 class="metric-title">UV Index</h4>
             <span id="uv-status" class="metric-badge">&mdash;</span>
           </div>
           <div class="metric-body">
-            <img id="uv-icon-img" src="/static/icons/uv-index.svg" width="48" height="48" alt="UV Index" class="metric-icon-large" />
+            <img id="uv-icon-img" src="/static/icons/uv-index.svg" width="48" height="48" alt="" aria-hidden="true" class="metric-icon-large" />
             <div class="metric-data">
               <div id="uv-val" class="metric-val">&mdash;</div>
               <div class="metric-sublabel">Solar Radiation</div>
@@ -221,11 +225,11 @@
         <!-- 2. Wind & Beaufort Scale -->
         <article class="glass-card metric-card">
           <div class="metric-header">
-            <span class="metric-title">Wind & Speed</span>
+            <h4 class="metric-title">Wind & Speed</h4>
             <span id="wind-direction" class="metric-badge">&mdash;</span>
           </div>
           <div class="metric-body">
-            <img id="wind-icon-img" src="/static/icons/wind.svg" width="48" height="48" alt="Wind" class="metric-icon-large" />
+            <img id="wind-icon-img" src="/static/icons/wind.svg" width="48" height="48" alt="" aria-hidden="true" class="metric-icon-large" />
             <div class="metric-data">
               <div id="wind-val" class="metric-val">&mdash;</div>
               <div id="wind-scale-name" class="metric-sublabel">&mdash;</div>
@@ -240,11 +244,11 @@
         <!-- 3. Humidity & Moisture -->
         <article class="glass-card metric-card">
           <div class="metric-header">
-            <span class="metric-title">Humidity</span>
+            <h4 class="metric-title">Humidity</h4>
             <span id="dew-point" class="metric-badge">&mdash;</span>
           </div>
           <div class="metric-body">
-            <img src="/static/icons/humidity.svg" width="48" height="48" alt="Humidity" class="metric-icon-large" />
+            <img src="/static/icons/humidity.svg" width="48" height="48" alt="" aria-hidden="true" class="metric-icon-large" />
             <div class="metric-data">
               <div id="humidity-val" class="metric-val">&mdash;%</div>
               <div class="metric-sublabel">Relative Moisture</div>
@@ -259,11 +263,11 @@
         <!-- 4. Visibility & Barometer Pressure -->
         <article class="glass-card metric-card">
           <div class="metric-header">
-            <span class="metric-title">Pressure & Air</span>
+            <h4 class="metric-title">Pressure & Air</h4>
             <span id="pressure-val" class="metric-badge">&mdash; hPa</span>
           </div>
           <div class="metric-body">
-            <img id="pressure-icon-img" src="/static/icons/barometer.svg" width="48" height="48" alt="Pressure" class="metric-icon-large" />
+            <img id="pressure-icon-img" src="/static/icons/barometer.svg" width="48" height="48" alt="" aria-hidden="true" class="metric-icon-large" />
             <div class="metric-data">
               <div id="visibility-val" class="metric-val">&mdash; km</div>
               <div class="metric-sublabel">Viewing Distance</div>
@@ -278,18 +282,18 @@
         <!-- 5. Solar Ephemeris & Sun Cycle -->
         <article class="glass-card metric-card">
           <div class="metric-header">
-            <span class="metric-title">Solar & Ephemeris</span>
+            <h4 class="metric-title">Solar & Ephemeris</h4>
             <span id="solar-status" class="metric-badge">Daylight</span>
           </div>
           <div class="metric-body">
-            <img id="solar-icon-img" src="/static/icons/sunrise.svg" width="48" height="48" alt="Solar" class="metric-icon-large" />
+            <img id="solar-icon-img" src="/static/icons/sunrise.svg" width="48" height="48" alt="" aria-hidden="true" class="metric-icon-large" />
             <div class="solar-readout-group">
               <div class="solar-time-pill">
-                <img src="/static/icons/sunrise.svg" width="18" height="18" alt="Rise" class="solar-pill-icon" />
+                <img src="/static/icons/sunrise.svg" width="18" height="18" alt="" aria-hidden="true" class="solar-pill-icon" />
                 <span id="sunrise-val" class="solar-pill-val">&mdash;:&mdash;</span>
               </div>
               <div class="solar-time-pill">
-                <img src="/static/icons/sunset.svg" width="18" height="18" alt="Set" class="solar-pill-icon" />
+                <img src="/static/icons/sunset.svg" width="18" height="18" alt="" aria-hidden="true" class="solar-pill-icon" />
                 <span id="sunset-val" class="solar-pill-val">&mdash;:&mdash;</span>
               </div>
             </div>
@@ -303,11 +307,11 @@
         <!-- 6. Air Quality Index -->
         <article class="glass-card metric-card">
           <div class="metric-header">
-            <span class="metric-title">Air Quality</span>
+            <h4 class="metric-title">Air Quality</h4>
             <span id="aqi-status" class="metric-badge">&mdash;</span>
           </div>
           <div class="metric-body">
-            <img id="aqi-icon-img" src="/static/icons/dust.svg" width="48" height="48" alt="AQI" class="metric-icon-large" />
+            <img id="aqi-icon-img" src="/static/icons/dust.svg" width="48" height="48" alt="" aria-hidden="true" class="metric-icon-large" />
             <div class="metric-data">
               <div id="aqi-val" class="metric-val">&mdash;</div>
               <div class="metric-sublabel">US AQI Index</div>
@@ -327,6 +331,9 @@
     <img src="/static/icons/not-available.svg" width="18" height="18" alt="" aria-hidden="true" class="toast-icon-img" />
     <span id="toast-msg">Notification message</span>
   </div>
+
+  <!-- Screen Reader Live Status Announcer (WCAG 4.1.3) -->
+  <div id="a11y-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Main ES Module Script -->
   <script type="module" src="/static/js/app.js"></script>

@@ -121,6 +121,43 @@
   padding: 0;
 }
 
+/* Skip to Content Navigation Link (WCAG 2.4.1) */
+.skip-link {
+  position: absolute;
+  top: -120px;
+  left: 1.5rem;
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background: #0f172a;
+  color: #38bdf8;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 2px solid #38bdf8;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  text-decoration: none;
+  transition: top 0.15s ease-out;
+}
+
+.skip-link:focus {
+  top: 1.5rem;
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+/* Screen Reader Only Utility Class (WCAG 4.1.3) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 :focus-visible {
   outline: 2px solid #38bdf8;
   outline-offset: 2px;
@@ -253,8 +290,8 @@ body {
 
 .search-input-wrapper:focus-within {
   background: var(--glass-bg-hover);
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px #38bdf8, 0 0 16px rgba(56, 189, 248, 0.35);
 }
 
 .search-icon {
@@ -477,7 +514,8 @@ body {
   flex-shrink: 0;
 }
 
-.dropdown-delete-item-btn {
+.dropdown-delete-item-btn,
+.dropdown-delete-hint {
   background: transparent;
   border: none;
   color: var(--text-dim);
@@ -491,7 +529,8 @@ body {
   transition: var(--transition-fast);
 }
 
-.dropdown-delete-item-btn:hover {
+.dropdown-delete-item-btn:hover,
+.dropdown-delete-hint:hover {
   opacity: 1;
   color: #f87171;
   background: rgba(255, 255, 255, 0.12);
@@ -1233,6 +1272,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+  margin: 0;
 }
 
 .metric-badge {

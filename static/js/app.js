@@ -99,6 +99,7 @@ class WeatherApp {
     this.updateUnitToggleUI();
     this.toast = document.getElementById('toast');
     this.toastMsg = document.getElementById('toast-msg');
+    this.a11yAnnouncer = document.getElementById('a11y-announcer') || document.getElementById('a11y-status');
 
     // Hero Elements
     this.locationNameEl = document.getElementById('hero-location-name');
@@ -156,6 +157,15 @@ class WeatherApp {
     this.aqiStatusEl = document.getElementById('aqi-status');
     this.aqiIconImg = document.getElementById('aqi-icon-img');
     this.aqiDescEl = document.getElementById('aqi-desc');
+  }
+
+  announceA11y(message) {
+    const el = this.a11yAnnouncer || document.getElementById('a11y-announcer');
+    if (!el) return;
+    el.textContent = '';
+    setTimeout(() => {
+      el.textContent = message;
+    }, 50);
   }
 
   bindEvents() {
@@ -243,7 +253,7 @@ class WeatherApp {
         }
       } else if (e.key === 'Escape' && document.activeElement === this.searchInput) {
         this.closeAutocomplete();
-        this.searchInput.blur();
+        // Preserves focus in search box per WAI-ARIA combobox guidelines
       }
     });
   }
@@ -488,6 +498,14 @@ class WeatherApp {
     }
 
     if (trimmed.length < 2) {
+      // Abort in-flight query and clear spinner when query is shortened or emptied
+      if (this.searchAbortController) {
+        this.searchAbortController.abort();
+        this.searchAbortController = null;
+      }
+      if (this.searchSpinner) {
+        this.searchSpinner.classList.remove('active');
+      }
       this.renderQuickAccessDropdown();
       return;
     }
@@ -497,10 +515,15 @@ class WeatherApp {
         this.searchAbortController.abort();
       }
       this.searchAbortController = new AbortController();
+      const currentController = this.searchAbortController;
 
       if (this.searchSpinner) this.searchSpinner.classList.add('active');
       try {
-        const results = await WeatherApi.searchLocations(trimmed, this.searchAbortController.signal);
+        const results = await WeatherApi.searchLocations(trimmed, currentController.signal);
+        // Ignore superseded results if a newer search started or signal was aborted
+        if (this.searchAbortController !== currentController || currentController.signal.aborted) {
+          return;
+        }
         this.autocompleteResults = results;
         this.selectedIndex = -1;
         this.renderAutocomplete(results);
@@ -509,7 +532,10 @@ class WeatherApp {
           console.warn('Search query error:', err);
         }
       } finally {
-        if (this.searchSpinner) this.searchSpinner.classList.remove('active');
+        // Only remove spinner if this controller is still the active one
+        if (this.searchAbortController === currentController && this.searchSpinner) {
+          this.searchSpinner.classList.remove('active');
+        }
       }
     }, 280);
   }
@@ -581,10 +607,19 @@ class WeatherApp {
       if (isQuickAccess && this.selectedIndex >= 0) {
         e.preventDefault();
         const favorites = this.getFavorites();
-        if (this.selectedIndex < favorites.length) {
-          this.removeFavorite(this.selectedIndex);
+        const targetIdx = this.selectedIndex;
+        if (targetIdx < favorites.length) {
+          this.removeFavorite(targetIdx);
         } else {
-          this.removeRecentSearch(this.selectedIndex - favorites.length);
+          this.removeRecentSearch(targetIdx - favorites.length);
+        }
+        // Re-query updated items and adjust selection
+        const remainingItems = this.autocompleteDropdown.querySelectorAll('.autocomplete-item');
+        if (remainingItems.length > 0) {
+          this.selectedIndex = Math.min(targetIdx, remainingItems.length - 1);
+          this.updateSelectedItem(remainingItems);
+        } else {
+          this.closeAutocomplete();
         }
       }
     } else if (e.key === 'Escape') {
@@ -608,6 +643,13 @@ class WeatherApp {
   }
 
   closeAutocomplete() {
+    if (this.searchAbortController) {
+      this.searchAbortController.abort();
+      this.searchAbortController = null;
+    }
+    if (this.searchSpinner) {
+      this.searchSpinner.classList.remove('active');
+    }
     this.autocompleteDropdown.classList.remove('show');
     this.autocompleteDropdown.innerHTML = '';
     this.selectedIndex = -1;
@@ -616,6 +658,13 @@ class WeatherApp {
   }
 
   selectLocation(item) {
+    if (this.searchAbortController) {
+      this.searchAbortController.abort();
+      this.searchAbortController = null;
+    }
+    if (this.searchSpinner) {
+      this.searchSpinner.classList.remove('active');
+    }
     this.currentLocation = {
       name: item.name,
       admin1: item.admin1 || '',
@@ -768,12 +817,20 @@ class WeatherApp {
 
     let globalIdx = 0;
 
-    // 1. Favorites Section
+    // 1. Favorites Section (wrapped in role="presentation" and role="group")
     if (favorites.length > 0) {
+      const groupContainer = document.createElement('li');
+      groupContainer.setAttribute('role', 'presentation');
+
+      const favGroup = document.createElement('ul');
+      favGroup.setAttribute('role', 'group');
+      favGroup.setAttribute('aria-label', 'Saved Favorites');
+
       const favHeader = document.createElement('li');
+      favHeader.setAttribute('role', 'presentation');
       favHeader.className = 'dropdown-section-header';
       favHeader.innerHTML = `<span>★ Saved Favorites</span><span class="dropdown-item-badge">${favorites.length}</span>`;
-      this.autocompleteDropdown.appendChild(favHeader);
+      favGroup.appendChild(favHeader);
 
       favorites.forEach((item, idx) => {
         const itemIdx = globalIdx++;
@@ -782,38 +839,51 @@ class WeatherApp {
         li.className = 'autocomplete-item';
         li.setAttribute('role', 'option');
         li.setAttribute('aria-selected', 'false');
+        li.setAttribute('aria-description', 'Press Delete key to remove from favorites');
         const sub = [item.admin1, item.country].filter(Boolean).join(', ');
         li.innerHTML = `
           <span class="autocomplete-city">⭐ ${escapeHtml(item.name)}</span>
           <div class="dropdown-item-meta">
             ${sub ? `<span class="autocomplete-country">${escapeHtml(sub)}</span>` : ''}
-            <button type="button" class="dropdown-delete-item-btn" title="Remove favorite (or press Delete)" aria-label="Remove ${escapeHtml(item.name)} from favorites">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
+            <span class="dropdown-delete-hint" role="presentation" title="Remove favorite (or press Delete)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </span>
           </div>
         `;
         li.addEventListener('click', (e) => {
-          if (e.target.closest('.dropdown-delete-item-btn')) return;
+          if (e.target.closest('.dropdown-delete-hint')) return;
           this.selectLocation(item);
         });
-        const delBtn = li.querySelector('.dropdown-delete-item-btn');
-        if (delBtn) {
-          delBtn.addEventListener('click', (e) => {
+        const delHint = li.querySelector('.dropdown-delete-hint');
+        if (delHint) {
+          delHint.addEventListener('click', (e) => {
             e.stopPropagation();
+            e.preventDefault();
             this.removeFavorite(idx);
           });
         }
-        this.autocompleteDropdown.appendChild(li);
+        favGroup.appendChild(li);
       });
+
+      groupContainer.appendChild(favGroup);
+      this.autocompleteDropdown.appendChild(groupContainer);
     }
 
-    // 2. Recent Searches Section
+    // 2. Recent Searches Section (wrapped in role="presentation" and role="group")
     if (recents.length > 0) {
+      const recContainer = document.createElement('li');
+      recContainer.setAttribute('role', 'presentation');
+
+      const recGroup = document.createElement('ul');
+      recGroup.setAttribute('role', 'group');
+      recGroup.setAttribute('aria-label', 'Recent Searches');
+
       const recHeader = document.createElement('li');
+      recHeader.setAttribute('role', 'presentation');
       recHeader.className = 'dropdown-section-header';
       recHeader.innerHTML = `
         <span>🕒 Recent Searches</span>
-        <button type="button" class="dropdown-clear-btn" id="clear-recents-btn">Clear All</button>
+        <button type="button" class="dropdown-clear-btn" id="clear-recents-btn" tabindex="-1">Clear All</button>
       `;
       const clearBtn = recHeader.querySelector('#clear-recents-btn');
       if (clearBtn) {
@@ -822,7 +892,7 @@ class WeatherApp {
           this.clearRecentSearches();
         });
       }
-      this.autocompleteDropdown.appendChild(recHeader);
+      recGroup.appendChild(recHeader);
 
       recents.forEach((item, idx) => {
         const itemIdx = globalIdx++;
@@ -831,29 +901,34 @@ class WeatherApp {
         li.className = 'autocomplete-item';
         li.setAttribute('role', 'option');
         li.setAttribute('aria-selected', 'false');
+        li.setAttribute('aria-description', 'Press Delete key to remove from recents');
         const sub = [item.admin1, item.country].filter(Boolean).join(', ');
         li.innerHTML = `
           <span class="autocomplete-city">${escapeHtml(item.name)}</span>
           <div class="dropdown-item-meta">
             ${sub ? `<span class="autocomplete-country">${escapeHtml(sub)}</span>` : ''}
-            <button type="button" class="dropdown-delete-item-btn" title="Remove from recents (or press Delete)" aria-label="Remove ${escapeHtml(item.name)} from recents">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
+            <span class="dropdown-delete-hint" role="presentation" title="Remove from recents (or press Delete)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </span>
           </div>
         `;
         li.addEventListener('click', (e) => {
-          if (e.target.closest('.dropdown-delete-item-btn')) return;
+          if (e.target.closest('.dropdown-delete-hint')) return;
           this.selectLocation(item);
         });
-        const delBtn = li.querySelector('.dropdown-delete-item-btn');
-        if (delBtn) {
-          delBtn.addEventListener('click', (e) => {
+        const delHint = li.querySelector('.dropdown-delete-hint');
+        if (delHint) {
+          delHint.addEventListener('click', (e) => {
             e.stopPropagation();
+            e.preventDefault();
             this.removeRecentSearch(idx);
           });
         }
-        this.autocompleteDropdown.appendChild(li);
+        recGroup.appendChild(li);
       });
+
+      recContainer.appendChild(recGroup);
+      this.autocompleteDropdown.appendChild(recContainer);
     }
 
     this.autocompleteDropdown.classList.add('show');
@@ -873,13 +948,19 @@ class WeatherApp {
       this.weatherAbortController.abort();
     }
     this.weatherAbortController = new AbortController();
+    const currentController = this.weatherAbortController;
 
     this.isLoading = true;
     try {
       const [weather, aqi] = await Promise.all([
-        WeatherApi.getWeather(location.latitude, location.longitude, location.timezone, this.weatherAbortController.signal),
-        WeatherApi.getAirQuality(location.latitude, location.longitude, this.weatherAbortController.signal)
+        WeatherApi.getWeather(location.latitude, location.longitude, location.timezone, currentController.signal),
+        WeatherApi.getAirQuality(location.latitude, location.longitude, currentController.signal)
       ]);
+
+      // Guard against superseded location loading
+      if (this.weatherAbortController !== currentController || currentController.signal.aborted) {
+        return;
+      }
 
       this.weatherData = weather;
       this.airQualityData = aqi;
@@ -909,9 +990,12 @@ class WeatherApp {
           el.classList.add('forecast-stale');
         });
         this.showToast(err.message || 'Unable to fetch weather forecast.');
+        this.announceA11y(`Error loading weather for ${location.name || 'location'}: ${err.message || 'Please check network connection.'}`);
       }
     } finally {
-      this.isLoading = false;
+      if (this.weatherAbortController === currentController) {
+        this.isLoading = false;
+      }
     }
   }
 
@@ -928,6 +1012,12 @@ class WeatherApp {
     const daily = this.weatherData?.daily;
     if (!current) return;
     const weatherInfo = getWeatherInfo(current.weather_code, current.is_day);
+
+    if (this.currentLocation) {
+      const temp = formatTemp(current.temperature_2m, this.unit);
+      const loc = this.currentLocation.name || 'Selected location';
+      this.announceA11y(`Weather updated for ${loc}: ${temp}, ${weatherInfo.desc}.`);
+    }
 
     this.locationNameEl.textContent = this.currentLocation.name || 'Location';
     const sub = [this.currentLocation.admin1, this.currentLocation.country].filter(Boolean).join(', ');
