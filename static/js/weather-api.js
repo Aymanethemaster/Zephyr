@@ -46,31 +46,54 @@ export class WeatherApi {
   }
 
   /**
-   * Helper fetch with timeout and error handling
+   * Creates an AbortError DOMException or equivalent Error object
+   */
+  static _createAbortError(message = 'The operation was aborted') {
+    if (typeof DOMException !== 'undefined') {
+      return new DOMException(message, 'AbortError');
+    }
+    const err = new Error(message);
+    err.name = 'AbortError';
+    return err;
+  }
+
+  /**
+   * Helper fetch with timeout and error handling.
+   * Properly propagates user AbortError, checks pre-aborted signal,
+   * cleans up event listeners, and distinguishes TimeoutError from cancellation.
    */
   static async _fetchWithTimeout(url, timeoutMs = 8000, signal = null) {
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => controller.abort();
 
     if (signal) {
-      signal.addEventListener('abort', () => controller.abort(), { once: true });
+      signal.addEventListener('abort', onAbort, { once: true });
     }
 
     try {
-      const resp = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
-      return resp;
+      return await fetch(url, { signal: controller.signal });
     } catch (err) {
-      clearTimeout(timer);
       if (err.name === 'AbortError') {
-        if (signal && signal.aborted) {
+        if (signal?.aborted) {
           throw err;
         }
-        const timeoutErr = new Error('Request timed out. Please check your network connection.');
-        timeoutErr.name = 'TimeoutError';
-        throw timeoutErr;
+        if (controller.signal.aborted) {
+          const timeoutErr = new Error('Request timed out. Please check your network connection.');
+          timeoutErr.name = 'TimeoutError';
+          throw timeoutErr;
+        }
       }
       throw err;
+    } finally {
+      clearTimeout(timer);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
     }
   }
 
@@ -78,6 +101,16 @@ export class WeatherApi {
     if (!query || typeof query !== 'string') return [];
     const trimmed = query.trim();
     if (trimmed.length < 2) return [];
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
+
+    const checkAbort = (e) => {
+      if (e?.name === 'AbortError' || signal?.aborted) {
+        throw e?.name === 'AbortError' ? e : this._createAbortError();
+      }
+    };
 
     // 1. Try local proxy first
     try {
@@ -92,7 +125,12 @@ export class WeatherApi {
         }
       }
     } catch (e) {
-      // Fallback to direct client API
+      checkAbort(e);
+      // Fallback to direct client API on non-abort errors (e.g. proxy failure, 502, network offline)
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
     }
 
     // 2. Direct client-side Open-Meteo Geocoding
@@ -112,7 +150,13 @@ export class WeatherApi {
           }));
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      checkAbort(e);
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
 
     // 3. Fallback to OpenStreetMap Photon (for typo tolerance)
     try {
@@ -144,12 +188,18 @@ export class WeatherApi {
             };
           }).filter(r => r.name);
       }
-    } catch (e) {}
+    } catch (e) {
+      checkAbort(e);
+    }
 
     return [];
   }
 
   static async getIpLocation(signal = null) {
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
+
     // 1. Try local proxy first
     try {
       const resp = await this._fetchWithTimeout('/api/ip-location', 3500, signal);
@@ -162,7 +212,13 @@ export class WeatherApi {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
 
     // 2. Direct client-side BigDataCloud IP lookup
     try {
@@ -183,7 +239,13 @@ export class WeatherApi {
           };
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
 
     // 3. Direct client-side GeoJS fallback
     try {
@@ -203,7 +265,9 @@ export class WeatherApi {
           };
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
 
     return null;
   }
@@ -215,6 +279,10 @@ export class WeatherApi {
       throw new Error('Invalid geographic coordinates');
     }
 
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
+
     // 1. Try local proxy first
     try {
       const resp = await this._fetchWithTimeout(`/api/reverse-geocode?lat=${latNum}&lon=${lonNum}`, 4000, signal);
@@ -224,7 +292,13 @@ export class WeatherApi {
           return await resp.json();
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
 
     // 2. Direct client-side BigDataCloud
     try {
@@ -242,7 +316,9 @@ export class WeatherApi {
           longitude: lonNum
         };
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
 
     return {
       name: `${latNum.toFixed(2)}°, ${lonNum.toFixed(2)}°`,
@@ -261,6 +337,10 @@ export class WeatherApi {
       throw new Error('Invalid coordinates provided for weather forecast');
     }
 
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
+
     // 1. Try local proxy first
     try {
       const resp = await this._fetchWithTimeout(`/api/weather?lat=${latNum}&lon=${lonNum}&timezone=${encodeURIComponent(timezone)}`, 5000, signal);
@@ -270,7 +350,13 @@ export class WeatherApi {
           return await resp.json();
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
 
     // 2. Direct client-side Open-Meteo (same field list as the backend proxy)
     const params = await WeatherApi._sharedParams;
@@ -289,6 +375,10 @@ export class WeatherApi {
     const lonNum = parseFloat(lon);
     if (isNaN(latNum) || isNaN(lonNum)) return null;
 
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
+
     // 1. Try local proxy first
     try {
       const resp = await this._fetchWithTimeout(`/api/air-quality?lat=${latNum}&lon=${lonNum}`, 4000, signal);
@@ -298,7 +388,13 @@ export class WeatherApi {
           return await resp.json();
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (e.name === 'AbortError' || signal?.aborted) throw e.name === 'AbortError' ? e : this._createAbortError();
+    }
+
+    if (signal?.aborted) {
+      throw this._createAbortError();
+    }
 
     // 2. Direct client-side Open-Meteo AQI
     try {
@@ -308,6 +404,7 @@ export class WeatherApi {
         return await resp.json();
       }
     } catch (err) {
+      if (err.name === 'AbortError' || signal?.aborted) throw err.name === 'AbortError' ? err : this._createAbortError();
       console.warn('Error fetching air quality:', err);
     }
     return null;
