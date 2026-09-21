@@ -8,8 +8,8 @@
  * - Clean lifecycle upgrades (skipWaiting, clients.claim, cache pruning)
  */
 
-const STATIC_CACHE = 'zephyr-static-v2.0';
-const DATA_CACHE = 'zephyr-data-v2.0';
+const STATIC_CACHE = 'zephyr-static-v2.2';
+const DATA_CACHE = 'zephyr-data-v2.2';
 const MAX_DATA_CACHE_ITEMS = 50;
 
 const PRECACHE_URLS = [
@@ -27,56 +27,103 @@ const PRECACHE_URLS = [
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
 
-  // UI & Atmospheric Base Icons
-  '/static/icons/compass.svg',
-  '/static/icons/not-available.svg',
-  '/static/icons/thermometer.svg',
-  '/static/icons/horizon.svg',
-  '/static/icons/humidity.svg',
+  // All Application & Weather Condition Vector Icons (122 SVGs)
   '/static/icons/barometer.svg',
-  '/static/icons/pressure-high.svg',
-  '/static/icons/sunrise.svg',
-  '/static/icons/sunset.svg',
-  '/static/icons/dust.svg',
-  '/static/icons/dust-day.svg',
-  '/static/icons/dust-wind.svg',
-  '/static/icons/raindrop.svg',
-  '/static/icons/wind.svg',
-  '/static/icons/uv-index.svg',
-
-  // WMO Weather Condition Meteocons (Day & Night)
+  '/static/icons/celsius.svg',
   '/static/icons/clear-day.svg',
   '/static/icons/clear-night.svg',
-  '/static/icons/partly-cloudy-day.svg',
-  '/static/icons/partly-cloudy-night.svg',
-  '/static/icons/overcast-day.svg',
-  '/static/icons/overcast-night.svg',
+  '/static/icons/cloudy.svg',
+  '/static/icons/compass.svg',
+  '/static/icons/drizzle.svg',
+  '/static/icons/dust.svg',
+  '/static/icons/dust-day.svg',
+  '/static/icons/dust-night.svg',
+  '/static/icons/dust-wind.svg',
+  '/static/icons/fahrenheit.svg',
+  '/static/icons/falling-stars.svg',
+  '/static/icons/fog.svg',
   '/static/icons/fog-day.svg',
   '/static/icons/fog-night.svg',
-  '/static/icons/partly-cloudy-day-drizzle.svg',
-  '/static/icons/partly-cloudy-night-drizzle.svg',
-  '/static/icons/partly-cloudy-day-rain.svg',
-  '/static/icons/partly-cloudy-night-rain.svg',
-  '/static/icons/rain.svg',
-  '/static/icons/sleet.svg',
-  '/static/icons/partly-cloudy-day-snow.svg',
-  '/static/icons/partly-cloudy-night-snow.svg',
-  '/static/icons/snow.svg',
-  '/static/icons/thunderstorms-day-rain.svg',
-  '/static/icons/thunderstorms-night-rain.svg',
-  '/static/icons/thunderstorms-rain.svg',
-
-  // Astronomical Moon Phase Icons
-  '/static/icons/moon-new.svg',
-  '/static/icons/moon-waxing-crescent.svg',
+  '/static/icons/hail.svg',
+  '/static/icons/haze.svg',
+  '/static/icons/haze-day.svg',
+  '/static/icons/haze-night.svg',
+  '/static/icons/horizon.svg',
+  '/static/icons/humidity.svg',
+  '/static/icons/hurricane.svg',
+  '/static/icons/lightning-bolt.svg',
+  '/static/icons/mist.svg',
   '/static/icons/moon-first-quarter.svg',
-  '/static/icons/moon-waxing-gibbous.svg',
   '/static/icons/moon-full.svg',
-  '/static/icons/moon-waning-gibbous.svg',
   '/static/icons/moon-last-quarter.svg',
+  '/static/icons/moon-new.svg',
   '/static/icons/moon-waning-crescent.svg',
-
-  // Dynamic UV Index Level Icons (1-11)
+  '/static/icons/moon-waning-gibbous.svg',
+  '/static/icons/moon-waxing-crescent.svg',
+  '/static/icons/moon-waxing-gibbous.svg',
+  '/static/icons/moonrise.svg',
+  '/static/icons/moonset.svg',
+  '/static/icons/not-available.svg',
+  '/static/icons/overcast.svg',
+  '/static/icons/overcast-day.svg',
+  '/static/icons/overcast-night.svg',
+  '/static/icons/partly-cloudy-day.svg',
+  '/static/icons/partly-cloudy-day-drizzle.svg',
+  '/static/icons/partly-cloudy-day-fog.svg',
+  '/static/icons/partly-cloudy-day-hail.svg',
+  '/static/icons/partly-cloudy-day-haze.svg',
+  '/static/icons/partly-cloudy-day-rain.svg',
+  '/static/icons/partly-cloudy-day-sleet.svg',
+  '/static/icons/partly-cloudy-day-smoke.svg',
+  '/static/icons/partly-cloudy-day-snow.svg',
+  '/static/icons/partly-cloudy-night.svg',
+  '/static/icons/partly-cloudy-night-drizzle.svg',
+  '/static/icons/partly-cloudy-night-fog.svg',
+  '/static/icons/partly-cloudy-night-hail.svg',
+  '/static/icons/partly-cloudy-night-haze.svg',
+  '/static/icons/partly-cloudy-night-rain.svg',
+  '/static/icons/partly-cloudy-night-sleet.svg',
+  '/static/icons/partly-cloudy-night-smoke.svg',
+  '/static/icons/partly-cloudy-night-snow.svg',
+  '/static/icons/pressure-high.svg',
+  '/static/icons/pressure-high-alt.svg',
+  '/static/icons/pressure-low.svg',
+  '/static/icons/pressure-low-alt.svg',
+  '/static/icons/rain.svg',
+  '/static/icons/raindrop.svg',
+  '/static/icons/raindrops.svg',
+  '/static/icons/sleet.svg',
+  '/static/icons/smoke.svg',
+  '/static/icons/smoke-particles.svg',
+  '/static/icons/snow.svg',
+  '/static/icons/snowflake.svg',
+  '/static/icons/solar-eclipse.svg',
+  '/static/icons/star.svg',
+  '/static/icons/starry-night.svg',
+  '/static/icons/sunrise.svg',
+  '/static/icons/sunset.svg',
+  '/static/icons/thermometer.svg',
+  '/static/icons/thermometer-celsius.svg',
+  '/static/icons/thermometer-colder.svg',
+  '/static/icons/thermometer-fahrenheit.svg',
+  '/static/icons/thermometer-glass.svg',
+  '/static/icons/thermometer-glass-celsius.svg',
+  '/static/icons/thermometer-glass-fahrenheit.svg',
+  '/static/icons/thermometer-mercury.svg',
+  '/static/icons/thermometer-mercury-cold.svg',
+  '/static/icons/thermometer-warmer.svg',
+  '/static/icons/thunderstorms.svg',
+  '/static/icons/thunderstorms-day.svg',
+  '/static/icons/thunderstorms-day-rain.svg',
+  '/static/icons/thunderstorms-day-snow.svg',
+  '/static/icons/thunderstorms-night.svg',
+  '/static/icons/thunderstorms-night-rain.svg',
+  '/static/icons/thunderstorms-night-snow.svg',
+  '/static/icons/thunderstorms-rain.svg',
+  '/static/icons/thunderstorms-snow.svg',
+  '/static/icons/tornado.svg',
+  '/static/icons/umbrella.svg',
+  '/static/icons/uv-index.svg',
   '/static/icons/uv-index-1.svg',
   '/static/icons/uv-index-2.svg',
   '/static/icons/uv-index-3.svg',
@@ -88,8 +135,7 @@ const PRECACHE_URLS = [
   '/static/icons/uv-index-9.svg',
   '/static/icons/uv-index-10.svg',
   '/static/icons/uv-index-11.svg',
-
-  // Dynamic Wind Beaufort Scale Icons (0-12)
+  '/static/icons/wind.svg',
   '/static/icons/wind-beaufort-0.svg',
   '/static/icons/wind-beaufort-1.svg',
   '/static/icons/wind-beaufort-2.svg',
@@ -102,7 +148,8 @@ const PRECACHE_URLS = [
   '/static/icons/wind-beaufort-9.svg',
   '/static/icons/wind-beaufort-10.svg',
   '/static/icons/wind-beaufort-11.svg',
-  '/static/icons/wind-beaufort-12.svg'
+  '/static/icons/wind-beaufort-12.svg',
+  '/static/icons/windsock.svg'
 ];
 
 /**
@@ -208,12 +255,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static Assets (CSS, JS, SVG, Fonts): Stale-While-Revalidate
+  // Static Assets (CSS, JS, SVG, Fonts): Stale-While-Revalidate with 304 Recovery
   event.respondWith(
     caches.open(STATIC_CACHE).then((cache) => {
       return cache.match(request).then((cachedResponse) => {
         const fetchPromise = fetch(request)
           .then((networkResponse) => {
+            // Handle 304 Not Modified safely without returning empty body to <img> elements
+            if (networkResponse && networkResponse.status === 304) {
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+              return fetch(new Request(request, { cache: 'reload' })).then((freshResponse) => {
+                if (freshResponse && freshResponse.status === 200) {
+                  cache.put(request, freshResponse.clone());
+                }
+                return freshResponse;
+              });
+            }
+
             if (
               networkResponse &&
               networkResponse.status === 200 &&
@@ -227,9 +287,12 @@ self.addEventListener('fetch', (event) => {
             return networkResponse;
           })
           .catch((err) => {
-            // Offline/network failure: return cached asset if available, otherwise propagate error
+            // Offline/network failure: return cached asset if available, otherwise fallback icon
             if (cachedResponse) {
               return cachedResponse;
+            }
+            if (url.pathname.endsWith('.svg') || url.pathname.includes('/static/icons/')) {
+              return cache.match('/static/icons/not-available.svg');
             }
             throw err;
           });

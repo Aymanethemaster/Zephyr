@@ -15,8 +15,18 @@ import {
   getAqiDetails,
   calculateSunPosition,
   getMeteoconFileName,
+  getSvgIcon,
+  getIconPath,
+  getMoonPhaseIcon,
   escapeHtml
 } from '../static/js/utils.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 test('formatTemp: formats temperatures with degree symbol', () => {
   assert.equal(formatTemp(20, 'C'), '20°');
@@ -123,4 +133,68 @@ test('escapeHtml: sanitizes HTML special characters safely', () => {
   assert.equal(escapeHtml(null), '');
   assert.equal(escapeHtml(undefined), '');
   assert.equal(escapeHtml(''), '');
+});
+
+test('getIconPath: resolves root and subpath correctly', () => {
+  assert.equal(getIconPath('clear-day.svg'), '/static/icons/clear-day.svg');
+  assert.equal(getIconPath('/static/icons/clear-day.svg'), '/static/icons/clear-day.svg');
+
+  // Test custom base path
+  globalThis.window = { ZEPHYR_BASE_PATH: '/Zephyr' };
+  assert.equal(getIconPath('wind.svg'), '/Zephyr/static/icons/wind.svg');
+  delete globalThis.window;
+});
+
+test('getSvgIcon: generates HTML with defensive onerror fallback and accessible attributes', () => {
+  const svgHtml = getSvgIcon('clear', true, 48);
+  assert.ok(svgHtml.includes('src="/static/icons/clear-day.svg"'));
+  assert.ok(svgHtml.includes('onerror='));
+  assert.ok(svgHtml.includes('dataset.fallback'));
+  assert.ok(svgHtml.includes('width="48"'));
+  assert.ok(svgHtml.includes('height="48"'));
+});
+
+test('Asset verification: all WMO weather condition icons exist on disk in static/icons/', () => {
+  const iconDir = path.join(PROJECT_ROOT, 'static', 'icons');
+  for (const codeStr of Object.keys(WMO_CODES)) {
+    const code = Number(codeStr);
+    for (const isDay of [true, false]) {
+      const info = getWeatherInfo(code, isDay);
+      const fileName = getMeteoconFileName(info.iconKey, info.isDay);
+      const filePath = path.join(iconDir, fileName);
+      assert.ok(fs.existsSync(filePath), `Icon file ${fileName} for WMO code ${code} (isDay: ${isDay}) must exist on disk`);
+    }
+  }
+});
+
+test('Asset verification: all Beaufort, UV, and Moon Phase icons exist on disk in static/icons/', () => {
+  const iconDir = path.join(PROJECT_ROOT, 'static', 'icons');
+
+  // Beaufort 0..12
+  for (let b = 0; b <= 12; b++) {
+    const fn = `wind-beaufort-${b}.svg`;
+    assert.ok(fs.existsSync(path.join(iconDir, fn)), `Beaufort icon ${fn} must exist on disk`);
+  }
+
+  // UV 1..11 and default
+  assert.ok(fs.existsSync(path.join(iconDir, 'uv-index.svg')));
+  for (let u = 1; u <= 11; u++) {
+    const fn = `uv-index-${u}.svg`;
+    assert.ok(fs.existsSync(path.join(iconDir, fn)), `UV icon ${fn} must exist on disk`);
+  }
+
+  // Moon phases
+  const moonPhases = [
+    'moon-new.svg',
+    'moon-waxing-crescent.svg',
+    'moon-first-quarter.svg',
+    'moon-waxing-gibbous.svg',
+    'moon-full.svg',
+    'moon-waning-gibbous.svg',
+    'moon-last-quarter.svg',
+    'moon-waning-crescent.svg'
+  ];
+  for (const mp of moonPhases) {
+    assert.ok(fs.existsSync(path.join(iconDir, mp)), `Moon phase icon ${mp} must exist on disk`);
+  }
 });

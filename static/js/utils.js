@@ -337,13 +337,31 @@ export function getMeteoconFileName(iconKey, isDay = true) {
 }
 
 /**
- * Returns animated Meteocon SVG element
+ * Returns clean icon path with support for subdirectory hosting (e.g. GitHub Pages)
+ */
+export function getIconPath(fileName) {
+  if (!fileName) return '';
+  const cleanName = String(fileName).replace(/^(\/)?static\/icons\//, '').replace(/^\//, '');
+  if (typeof window !== 'undefined' && window.ZEPHYR_BASE_PATH) {
+    const base = window.ZEPHYR_BASE_PATH.endsWith('/') ? window.ZEPHYR_BASE_PATH : `${window.ZEPHYR_BASE_PATH}/`;
+    return `${base}static/icons/${cleanName}`.replace(/\/+/g, '/');
+  }
+  const pathname = typeof window !== 'undefined' ? (window.location?.pathname || '/') : '/';
+  const dir = pathname.endsWith('/') ? pathname : (pathname.substring(0, pathname.lastIndexOf('/') + 1) || '/');
+  return `${dir}static/icons/${cleanName}`.replace(/\/+/g, '/');
+}
+
+/**
+ * Returns animated Meteocon SVG element with defensive fallback protection
  */
 export function getSvgIcon(iconKey, isDay = true, size = 48) {
   const fileName = getMeteoconFileName(iconKey, isDay);
+  const fallback = isDay ? 'clear-day.svg' : 'clear-night.svg';
+  const iconSrc = getIconPath(fileName);
+  const fallbackSrc = getIconPath(fallback);
   return `
     <img 
-      src="/static/icons/${fileName}" 
+      src="${iconSrc}" 
       alt="" 
       aria-hidden="true"
       width="${size}" 
@@ -352,6 +370,7 @@ export function getSvgIcon(iconKey, isDay = true, size = 48) {
       style="width:${size}px; height:${size}px; object-fit:contain; filter:drop-shadow(0 4px 10px rgba(0,0,0,0.18));"
       loading="eager"
       decoding="async"
+      onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='${fallbackSrc}';}"
     />
   `;
 }

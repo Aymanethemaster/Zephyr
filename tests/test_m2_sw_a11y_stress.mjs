@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 // --- 1. Service Worker Precache Integrity Stress Test ---
-test('SW PRECACHE_URLS: all 77 manifest files exist on disk with non-zero size', () => {
+test('SW PRECACHE_URLS: all 132 manifest files exist on disk with non-zero size', () => {
   const swPath = path.join(PROJECT_ROOT, 'sw.js');
   assert.ok(fs.existsSync(swPath), 'sw.js must exist in project root');
 
@@ -25,7 +25,7 @@ test('SW PRECACHE_URLS: all 77 manifest files exist on disk with non-zero size',
     .filter(line => line.startsWith("'") || line.startsWith('"'))
     .map(line => line.replace(/['",]/g, '').trim());
 
-  assert.equal(rawUrls.length, 77, `Expected exactly 77 precache URLs, found ${rawUrls.length}`);
+  assert.equal(rawUrls.length, 132, `Expected exactly 132 precache URLs, found ${rawUrls.length}`);
 
   const missingFiles = [];
   const emptyFiles = [];
