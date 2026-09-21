@@ -8,8 +8,8 @@
  * - Clean lifecycle upgrades (skipWaiting, clients.claim, cache pruning)
  */
 
-const STATIC_CACHE = 'zephyr-static-v2.5';
-const DATA_CACHE = 'zephyr-data-v2.5';
+const STATIC_CACHE = 'zephyr-static-v2.6';
+const DATA_CACHE = 'zephyr-data-v2.6';
 const MAX_DATA_CACHE_ITEMS = 50;
 
 const PRECACHE_URLS = [
@@ -266,58 +266,51 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static Assets (CSS, JS, SVG, Fonts): Stale-While-Revalidate with Unconditional Fetch
+  // Static Assets (CSS, JS, SVG, Fonts): Stale-While-Revalidate
   event.respondWith(
-    caches.open(STATIC_CACHE).then((cache) => {
-      return cache.match(request).then((cachedResponse) => {
-        // Strip conditional headers so upstream never responds with an empty 304 body
-        const cleanHeaders = new Headers(request.headers);
-        cleanHeaders.delete('if-none-match');
-        cleanHeaders.delete('if-modified-since');
-        const cleanRequest = new Request(request.url, {
-          method: 'GET',
-          headers: cleanHeaders,
-          cache: 'reload',
-          mode: request.mode === 'navigate' ? 'same-origin' : request.mode,
-          credentials: request.credentials
-        });
+    caches.open(STATIC_CACHE).then(async (cache) => {
+      const cachedResponse = await cache.match(request, { ignoreSearch: true });
 
-        const fetchPromise = fetch(cleanRequest)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 304) {
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              if (url.pathname.endsWith('.svg') || url.pathname.includes('/static/icons/')) {
-                return cache.match('/static/icons/not-available.svg');
-              }
-            }
-
-            if (
-              networkResponse &&
-              networkResponse.status === 200 &&
-              (url.origin === self.location.origin ||
-               url.hostname.includes('googleapis.com') ||
-               url.hostname.includes('gstatic.com'))
-            ) {
-              const responseClone = networkResponse.clone();
-              cache.put(request, responseClone);
-            }
-            return networkResponse;
-          })
-          .catch((err) => {
-            // Offline/network failure: return cached asset if available, otherwise fallback icon
+      const fetchPromise = fetch(request)
+        .then(async (networkResponse) => {
+          if (networkResponse && networkResponse.status === 304) {
             if (cachedResponse) {
               return cachedResponse;
             }
-            if (url.pathname.endsWith('.svg') || url.pathname.includes('/static/icons/')) {
-              return cache.match('/static/icons/not-available.svg');
+            try {
+              const fresh = await fetch(request.url, { cache: 'reload' });
+              if (fresh && fresh.status === 200) {
+                cache.put(request, fresh.clone());
+                return fresh;
+              }
+            } catch (e) {
+              // Ignore reload error and fall through
             }
-            throw err;
-          });
+          }
 
-        return cachedResponse || fetchPromise;
-      });
+          if (
+            networkResponse &&
+            networkResponse.status === 200 &&
+            (url.origin === self.location.origin ||
+             url.hostname.includes('googleapis.com') ||
+             url.hostname.includes('gstatic.com'))
+          ) {
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          if (url.pathname.endsWith('.svg') || url.pathname.includes('/static/icons/')) {
+            const fallback = await cache.match('/static/icons/not-available.svg');
+            if (fallback) return fallback;
+          }
+          return fetch(request);
+        });
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
