@@ -8,8 +8,8 @@
  * - Clean lifecycle upgrades (skipWaiting, clients.claim, cache pruning)
  */
 
-const STATIC_CACHE = 'zephyr-static-v2.2';
-const DATA_CACHE = 'zephyr-data-v2.2';
+const STATIC_CACHE = 'zephyr-static-v2.5';
+const DATA_CACHE = 'zephyr-data-v2.5';
 const MAX_DATA_CACHE_ITEMS = 50;
 
 const PRECACHE_URLS = [
@@ -169,13 +169,24 @@ async function trimCache(cacheName, maxItems) {
   }
 }
 
-// Install: pre-cache static application shell and vector assets
+// Install: pre-cache static application shell and vector assets resiliently
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .catch((err) => console.warn('Service worker precache warning:', err))
+    caches.open(STATIC_CACHE).then(async (cache) => {
+      await Promise.allSettled(
+        PRECACHE_URLS.map(async (url) => {
+          try {
+            const res = await fetch(new Request(url, { cache: 'reload' }));
+            if (res.ok) {
+              await cache.put(url, res);
+            }
+          } catch (err) {
+            console.warn('Precache failed for', url, err);
+          }
+        })
+      );
+    })
   );
 });
 
@@ -255,23 +266,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static Assets (CSS, JS, SVG, Fonts): Stale-While-Revalidate with 304 Recovery
+  // Static Assets (CSS, JS, SVG, Fonts): Stale-While-Revalidate with Unconditional Fetch
   event.respondWith(
     caches.open(STATIC_CACHE).then((cache) => {
       return cache.match(request).then((cachedResponse) => {
-        const fetchPromise = fetch(request)
+        // Strip conditional headers so upstream never responds with an empty 304 body
+        const cleanHeaders = new Headers(request.headers);
+        cleanHeaders.delete('if-none-match');
+        cleanHeaders.delete('if-modified-since');
+        const cleanRequest = new Request(request.url, {
+          method: 'GET',
+          headers: cleanHeaders,
+          cache: 'reload',
+          mode: request.mode === 'navigate' ? 'same-origin' : request.mode,
+          credentials: request.credentials
+        });
+
+        const fetchPromise = fetch(cleanRequest)
           .then((networkResponse) => {
-            // Handle 304 Not Modified safely without returning empty body to <img> elements
             if (networkResponse && networkResponse.status === 304) {
               if (cachedResponse) {
                 return cachedResponse;
               }
-              return fetch(new Request(request, { cache: 'reload' })).then((freshResponse) => {
-                if (freshResponse && freshResponse.status === 200) {
-                  cache.put(request, freshResponse.clone());
-                }
-                return freshResponse;
-              });
+              if (url.pathname.endsWith('.svg') || url.pathname.includes('/static/icons/')) {
+                return cache.match('/static/icons/not-available.svg');
+              }
             }
 
             if (

@@ -1169,6 +1169,24 @@ class WeatherApp {
     }
   }
 
+  setMetricIcon(imgEl, iconFileName, fallbackFileName) {
+    if (!imgEl) return;
+    delete imgEl.dataset.fallback;
+    const targetSrc = getIconPath(iconFileName);
+    const fallbackSrc = getIconPath(fallbackFileName);
+    const ultimateFallbackSrc = getIconPath('not-available.svg');
+    imgEl.onerror = () => {
+      if (!imgEl.dataset.fallback) {
+        imgEl.dataset.fallback = '1';
+        imgEl.src = fallbackSrc;
+      } else if (imgEl.dataset.fallback === '1') {
+        imgEl.dataset.fallback = '2';
+        imgEl.src = ultimateFallbackSrc;
+      }
+    };
+    imgEl.src = targetSrc;
+  }
+
   renderMetricsGrid() {
     const current = this.weatherData?.current || {};
     const daily = this.weatherData?.daily || {};
@@ -1182,18 +1200,10 @@ class WeatherApp {
     this.uvStatusEl.style.color = uvRisk.color;
     this.uvAdviceEl.textContent = uvRisk.advice;
     if (this.uvIconImg) {
-      this.uvIconImg.onerror = () => {
-        if (!this.uvIconImg.dataset.fallback) {
-          this.uvIconImg.dataset.fallback = '1';
-          this.uvIconImg.src = getIconPath('uv-index.svg');
-        }
-      };
-      if (typeof uvVal === 'number' && uvVal < 0.5) {
-        this.uvIconImg.src = getIconPath('uv-index.svg');
-      } else {
-        const uvNum = Math.min(11, Math.max(1, Math.round(uvVal)));
-        this.uvIconImg.src = getIconPath(`uv-index-${uvNum}.svg`);
-      }
+      const uvFileName = (typeof uvVal === 'number' && uvVal < 0.5)
+        ? 'uv-index.svg'
+        : `uv-index-${Math.min(11, Math.max(1, Math.round(uvVal)))}.svg`;
+      this.setMetricIcon(this.uvIconImg, uvFileName, 'uv-index.svg');
     }
     const uvFill = document.getElementById('uv-gauge-fill');
     const uvMeter = document.getElementById('uv-meter');
@@ -1213,13 +1223,7 @@ class WeatherApp {
       this.windScaleNameEl.textContent = getBeaufortName(beaufort);
     }
     if (this.windIconImg) {
-      this.windIconImg.onerror = () => {
-        if (!this.windIconImg.dataset.fallback) {
-          this.windIconImg.dataset.fallback = '1';
-          this.windIconImg.src = getIconPath('wind.svg');
-        }
-      };
-      this.windIconImg.src = getIconPath(`wind-beaufort-${beaufort}.svg`);
+      this.setMetricIcon(this.windIconImg, `wind-beaufort-${beaufort}.svg`, 'wind.svg');
     }
     const windFill = document.getElementById('wind-gauge-fill');
     const windMeter = document.getElementById('wind-meter');
@@ -1253,15 +1257,10 @@ class WeatherApp {
     const pressureVal = current.pressure_msl || current.surface_pressure;
     this.pressureValEl.textContent = formatPressure(pressureVal, this.unit);
     if (this.pressureIconImg) {
-      this.pressureIconImg.onerror = () => {
-        if (!this.pressureIconImg.dataset.fallback) {
-          this.pressureIconImg.dataset.fallback = '1';
-          this.pressureIconImg.src = getIconPath('barometer.svg');
-        }
-      };
-      this.pressureIconImg.src = (pressureVal && pressureVal >= 1013)
-        ? getIconPath('pressure-high.svg')
-        : getIconPath('barometer.svg');
+      const pressureFileName = (pressureVal && pressureVal >= 1013)
+        ? 'pressure-high.svg'
+        : 'barometer.svg';
+      this.setMetricIcon(this.pressureIconImg, pressureFileName, 'barometer.svg');
     }
     if (visibilityMeters >= 9000) {
       this.visibilityDescEl.textContent = 'Perfect clear view.';
@@ -1286,13 +1285,9 @@ class WeatherApp {
     const solarPos = calculateSunPosition(sunrise, sunset, currentLocalTime, isDay);
     this.solarStatusEl.textContent = solarPos.isDaytime ? 'Daylight' : 'Night';
     if (this.solarIconImg) {
-      this.solarIconImg.onerror = () => {
-        if (!this.solarIconImg.dataset.fallback) {
-          this.solarIconImg.dataset.fallback = '1';
-          this.solarIconImg.src = getIconPath(solarPos.isDaytime ? 'clear-day.svg' : 'clear-night.svg');
-        }
-      };
-      this.solarIconImg.src = getIconPath(solarPos.isDaytime ? 'sunrise.svg' : getMoonPhaseIcon());
+      const solarFileName = solarPos.isDaytime ? 'sunrise.svg' : getMoonPhaseIcon();
+      const solarFallback = solarPos.isDaytime ? 'sunrise.svg' : 'clear-night.svg';
+      this.setMetricIcon(this.solarIconImg, solarFileName, solarFallback);
     }
     if (this.solarDescEl) {
       this.solarDescEl.textContent = solarPos.label;
@@ -1314,15 +1309,10 @@ class WeatherApp {
     this.aqiStatusEl.textContent = aqiInfo.text;
     this.aqiStatusEl.style.color = aqiInfo.color;
     if (this.aqiIconImg) {
-      this.aqiIconImg.onerror = () => {
-        if (!this.aqiIconImg.dataset.fallback) {
-          this.aqiIconImg.dataset.fallback = '1';
-          this.aqiIconImg.src = getIconPath('dust.svg');
-        }
-      };
-      this.aqiIconImg.src = (aqiVal && aqiVal > 100)
-        ? getIconPath('dust-wind.svg')
-        : getIconPath('dust-day.svg');
+      const aqiFileName = (aqiVal && aqiVal > 100)
+        ? 'dust-wind.svg'
+        : 'dust-day.svg';
+      this.setMetricIcon(this.aqiIconImg, aqiFileName, 'dust.svg');
     }
     this.aqiDescEl.textContent = aqiInfo.description;
     const aqiFill = document.getElementById('aqi-gauge-fill');

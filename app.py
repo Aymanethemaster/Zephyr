@@ -8,7 +8,7 @@ import threading
 import ipaddress
 from collections import OrderedDict, deque
 from urllib.parse import urlsplit
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, make_response
 import requests
 from requests.adapters import HTTPAdapter
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -332,12 +332,20 @@ def set_security_headers(response):
 @app.route("/")
 @app.route("/index.html")
 def index():
-    return render_template("index.html")
+    resp = make_response(render_template("index.html"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route("/sw.js")
 def service_worker():
-    return send_from_directory(BASE_DIR, "sw.js", mimetype="application/javascript")
+    resp = send_from_directory(BASE_DIR, "sw.js", mimetype="application/javascript")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route("/api/geocoding")
