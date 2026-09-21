@@ -85,6 +85,20 @@ During the design and implementation of Zephyr, several architectural choices we
 
 4. Open `http://127.0.0.1:5000` in your web browser.
 
+#### Environment Variables
+
+The backend is configured entirely through optional environment variables (sensible defaults are used for local development):
+
+| Variable | Purpose | Default |
+|:---|:---|:---|
+| `ALLOWED_ORIGINS` | Comma-separated list of origins permitted to call `/api/*` (strict Origin/Fetch-Metadata verification). **Set this in production** — when unset, the proxy is permissive for local development. | *(unset = permissive)* |
+| `BEHIND_PROXY` | Set to `1` when deployed behind a trusted reverse proxy (e.g. Vercel) so `X-Forwarded-For` is honored and rate limiting keys on the real visitor IP. | `0` |
+| `PROXY_HOPS` | Explicit number of trusted proxy hops (overrides `BEHIND_PROXY`). | `0` |
+| `PORT` | Port for the development server. | `5000` |
+| `FLASK_DEBUG` | Set to `1` to enable Flask debug mode (never in production). | off |
+
+On Vercel, `ALLOWED_ORIGINS` and `BEHIND_PROXY` are already provisioned via the `env` block in `vercel.json`. To use a custom domain, add it to `ALLOWED_ORIGINS` in the Vercel project settings (dashboard values take precedence).
+
 #### Running Tests
 
 To run the automated test suite:

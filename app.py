@@ -171,6 +171,22 @@ def get_from_cache(key: str):
                 del CACHE[key]
     return None
 
+def get_fresh_cached(key: str):
+    """Return the cached payload only while it is still fresh (LRU-touching).
+
+    Unlike get_from_cache, this ignores the stale-while-revalidate window —
+    stale entries are left to the fetch path, which may revalidate upstream.
+    Used to serve cache hits without consuming rate-limit budget.
+    """
+    with CACHE_LOCK:
+        if key in CACHE:
+            fresh_until, _stale_until, data = CACHE[key]
+            if time.time() < fresh_until:
+                CACHE.move_to_end(key)
+                return data
+    return None
+
+
 def set_to_cache(key: str, data, ttl: int, stale_ttl: int = None):
     """Store data in unified 3-tuple: (fresh_until, stale_until, data)."""
     with CACHE_LOCK:
@@ -650,8 +666,6 @@ def get_weather_with_fallback(lat_f, lon_f, timezone):
 
 @app.route("/api/weather")
 def get_weather():
-    if not check_rate_limit():
-        return jsonify({"error": "Too many requests. Please slow down."}), 429
     lat = request.args.get("lat")
     lon = request.args.get("lon")
     raw_tz = request.args.get("timezone", "auto")
@@ -667,13 +681,22 @@ def get_weather():
     if not re.match(r"^[A-Za-z0-9_\/\+\-]+$", timezone):
         timezone = "auto"
 
+    # Fresh cache hits never touch the upstream API, so they are served
+    # without consuming the caller's rate-limit budget. Only upstream-bound
+    # requests are throttled.
+    cache_key = f"weather:{lat_f}:{lon_f}:{timezone}"
+    cached = get_fresh_cached(cache_key)
+    if cached is not None:
+        return jsonify(cached), 200
+
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
+
     return get_weather_with_fallback(lat_f, lon_f, timezone)
 
 
 @app.route("/api/air-quality")
 def get_air_quality():
-    if not check_rate_limit():
-        return jsonify({"error": "Too many requests. Please slow down."}), 429
     lat = request.args.get("lat")
     lon = request.args.get("lon")
     if not lat or not lon:
@@ -683,10 +706,14 @@ def get_air_quality():
     if lat_f is None or lon_f is None:
         return jsonify({"error": "Invalid coordinates format"}), 400
 
+    # Serve cache hits before consuming rate-limit budget (no upstream call needed)
     cache_key = f"aqi:{lat_f}:{lon_f}"
     cached = get_from_cache(cache_key)
     if cached:
         return jsonify(cached)
+
+    if not check_rate_limit():
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
 
     try:
         url = "https://air-quality-api.open-meteo.com/v1/air-quality"

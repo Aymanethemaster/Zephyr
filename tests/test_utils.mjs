@@ -145,13 +145,18 @@ test('getIconPath: resolves root and subpath correctly', () => {
   delete globalThis.window;
 });
 
-test('getSvgIcon: generates HTML with defensive onerror fallback and accessible attributes', () => {
+test('getSvgIcon: generates CSP-safe HTML with data-attribute fallback and accessible attributes', () => {
   const svgHtml = getSvgIcon('clear', true, 48);
   assert.ok(svgHtml.includes('src="/static/icons/clear-day.svg"'));
-  assert.ok(svgHtml.includes('onerror='));
-  assert.ok(svgHtml.includes('dataset.fallback'));
+  assert.ok(svgHtml.includes('data-fallback-src="/static/icons/clear-day.svg"'));
+  assert.ok(!svgHtml.includes('onerror='), 'must not use CSP-blocked inline event handlers');
   assert.ok(svgHtml.includes('width="48"'));
   assert.ok(svgHtml.includes('height="48"'));
+  assert.ok(svgHtml.includes('loading="eager"'), 'defaults to eager loading');
+
+  const lazyNight = getSvgIcon('rain-light', false, 36, 'lazy');
+  assert.ok(lazyNight.includes('loading="lazy"'), 'supports lazy loading for offscreen icons');
+  assert.ok(lazyNight.includes('data-fallback-src="/static/icons/clear-night.svg"'));
 });
 
 test('Asset verification: all WMO weather condition icons exist on disk in static/icons/', () => {

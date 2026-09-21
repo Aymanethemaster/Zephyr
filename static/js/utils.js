@@ -352,13 +352,23 @@ export function getIconPath(fileName) {
 }
 
 /**
- * Returns animated Meteocon SVG element with defensive fallback protection
+ * Returns animated Meteocon SVG element with defensive fallback protection.
+ *
+ * CSP-safe design: no inline event handlers (blocked by `script-src 'self'`).
+ * The fallback chain is declared via `data-fallback-src` and executed by the
+ * global capture-phase error listener registered in app.js.
+ *
+ * @param {string} iconKey - WMO icon key (see getMeteoconFileName)
+ * @param {boolean} isDay - day/night variant selector
+ * @param {number} size - rendered width/height in px
+ * @param {'eager'|'lazy'} loading - use 'lazy' for offscreen list/strip icons
  */
-export function getSvgIcon(iconKey, isDay = true, size = 48) {
+export function getSvgIcon(iconKey, isDay = true, size = 48, loading = 'eager') {
   const fileName = getMeteoconFileName(iconKey, isDay);
   const fallback = isDay ? 'clear-day.svg' : 'clear-night.svg';
   const iconSrc = getIconPath(fileName);
   const fallbackSrc = getIconPath(fallback);
+  const loadingAttr = loading === 'lazy' ? 'lazy' : 'eager';
   return `
     <img 
       src="${iconSrc}" 
@@ -368,9 +378,9 @@ export function getSvgIcon(iconKey, isDay = true, size = 48) {
       height="${size}" 
       class="weather-icon-img" 
       style="width:${size}px; height:${size}px; object-fit:contain; filter:drop-shadow(0 4px 10px rgba(0,0,0,0.18));"
-      loading="eager"
+      loading="${loadingAttr}"
       decoding="async"
-      onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='${fallbackSrc}';}"
+      data-fallback-src="${fallbackSrc}"
     />
   `;
 }

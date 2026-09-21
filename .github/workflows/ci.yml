@@ -43,3 +43,37 @@ jobs:
         run: |
           node --test tests/test_utils.mjs
 
+  deploy-smoke:
+    name: Post-Deploy Smoke Test (production)
+    # Runs only after a push to main; gives Vercel time to finish deploying,
+    # then fails the build if any critical asset is not served (regression
+    # guard for the static-asset 404 incident).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Vercel deploy and verify critical assets
+        run: |
+          BASE="https://zephyr-mocha.vercel.app"
+          PATHS="/sw.js /static/css/style.css /static/js/app.js /static/js/utils.js /static/js/weather-params.json /static/manifest.json /static/icons/rain.svg /static/icons/clear-day.svg /static/icons/clear-night.svg /static/icons/partly-cloudy-day-drizzle.svg /static/icons/wind-beaufort-1.svg /static/icons/uv-index-1.svg /static/icons/not-available.svg /static/icons/icon-192.png /api/health"
+
+          # Poll until the new deployment is live (up to ~5 minutes)
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/sw.js")
+            if [ "$code" = "200" ]; then break; fi
+            echo "Waiting for deployment... (attempt $attempt, /sw.js -> $code)"
+            sleep 10
+          done
+
+          failed=0
+          for p in $PATHS; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE$p")
+            echo "$p -> $code"
+            if [ "$code" != "200" ]; then failed=1; fi
+          done
+
+          if [ "$failed" = "1" ]; then
+            echo "::error::Smoke test failed: one or more production assets are not being served"
+            exit 1
+          fi
+          echo "All production smoke checks passed."
+

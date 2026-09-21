@@ -1,6 +1,10 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "env": {
+    "ALLOWED_ORIGINS": "https://zephyr-mocha.vercel.app",
+    "BEHIND_PROXY": "1"
+  },
   "builds": [
     {
       "src": "app.py",

@@ -1092,10 +1092,10 @@ class WeatherApp {
       item.setAttribute('title', `${timeStr}: ${info.desc}, ${tempVal}`);
       item.innerHTML = `
         <span class="hourly-time">${timeStr}</span>
-        <div class="hourly-icon">${getSvgIcon(info.iconKey, info.isDay, 36)}</div>
+        <div class="hourly-icon">${getSvgIcon(info.iconKey, info.isDay, 36, 'lazy')}</div>
         <span class="hourly-temp">${tempVal}</span>
         <span class="hourly-condition-name" title="${escapeHtml(info.desc)}">${escapeHtml(info.desc)}</span>
-        ${rainChance > 0 ? `<span class="hourly-rain"><img src="${getIconPath('raindrop.svg')}" onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='${getIconPath('rain.svg')}';}" width="12" height="12" alt="" aria-hidden="true" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:2px;" />${rainChance}%</span>` : `<span class="hourly-wind-sub">${windSpd}</span>`}
+        ${rainChance > 0 ? `<span class="hourly-rain"><img src="${getIconPath('raindrop.svg')}" data-fallback-src="${getIconPath('rain.svg')}" width="12" height="12" alt="" aria-hidden="true" style="width:12px; height:12px; display:inline-block; vertical-align:middle; margin-right:2px;" />${rainChance}%</span>` : `<span class="hourly-wind-sub">${windSpd}</span>`}
       `;
       this.hourlyStripEl.appendChild(item);
     }
@@ -1155,7 +1155,7 @@ class WeatherApp {
           <span class="daily-date-sub">${dateStr}</span>
         </div>
         <div class="daily-icon-col" title="${escapeHtml(info.desc)}">
-          ${getSvgIcon(info.iconKey, true, 28)}
+          ${getSvgIcon(info.iconKey, true, 28, 'lazy')}
         </div>
         <div class="temp-bar-container" aria-label="Low ${minVal}, High ${maxVal}">
           <span class="daily-min">${minVal}</span>
@@ -1355,15 +1355,40 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Global defensive image error recovery listener
+// Global defensive image error recovery listener.
+// CSP-compliant: requires no inline event handlers (which `script-src 'self'` blocks).
+// Images declare their fallback chain via data attributes:
+//   data-fallback-src  -> alternate icon URL to try first
+//   data-fallback-hide -> hide the element instead (purely decorative icons)
+// Everything else terminates at not-available.svg. The dataset.fallback
+// counter (1 -> 2) bounds the chain so a missing terminal asset cannot loop.
 window.addEventListener('error', (event) => {
   const target = event.target;
-  if (target && target.tagName === 'IMG' && !target.dataset.fallback) {
-    if (typeof target.onerror === 'function') {
-      return;
-    }
+  if (!target || target.tagName !== 'IMG') return;
+  if (typeof target.onerror === 'function') return; // handled imperatively (setMetricIcon)
+  if (target.dataset.fallback === '2') return;      // terminal fallback already attempted
+
+  const resolveUrl = (p) => {
+    try { return new URL(p, window.location.href).href; } catch { return p; }
+  };
+
+  if (target.dataset.fallbackHide === 'true') {
+    target.dataset.fallback = '2';
+    target.style.display = 'none';
+    return;
+  }
+
+  if (!target.dataset.fallback && target.dataset.fallbackSrc &&
+      resolveUrl(target.dataset.fallbackSrc) !== target.src) {
     target.dataset.fallback = '1';
-    target.src = getIconPath('not-available.svg');
+    target.src = target.dataset.fallbackSrc;
+    return;
+  }
+
+  target.dataset.fallback = '2';
+  const ultimate = getIconPath('not-available.svg');
+  if (resolveUrl(ultimate) !== target.src) {
+    target.src = ultimate;
   }
 }, true);
 
