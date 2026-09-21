@@ -5,12 +5,40 @@
     {
       "src": "app.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "sw.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "static/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "app.py" },
-    { "src": "/sw.js", "dest": "/sw.js" },
-    { "src": "/static/(.*)", "dest": "/static/$1" },
+    {
+      "src": "/sw.js",
+      "dest": "/sw.js",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Service-Worker-Allowed": "/"
+      }
+    },
+    {
+      "src": "/static/icons/(.*)",
+      "dest": "/static/icons/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"
+      }
+    },
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    },
     { "src": "/(.*)", "dest": "app.py" }
   ]
 }

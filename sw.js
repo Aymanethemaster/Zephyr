@@ -8,8 +8,8 @@
  * - Clean lifecycle upgrades (skipWaiting, clients.claim, cache pruning)
  */
 
-const STATIC_CACHE = 'zephyr-static-v2.6';
-const DATA_CACHE = 'zephyr-data-v2.6';
+const STATIC_CACHE = 'zephyr-static-v2.7';
+const DATA_CACHE = 'zephyr-data-v2.7';
 const MAX_DATA_CACHE_ITEMS = 50;
 
 const PRECACHE_URLS = [
