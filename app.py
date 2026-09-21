@@ -302,23 +302,30 @@ def set_security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(self)"
-    # Enforce HTTPS on deployments served over TLS (RFC 6797 compliance, ISSUE-SEC-07)
-    if request.is_secure or (app.testing and request.headers.get("X-Forwarded-Proto") == "https"):
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data:; "
-        "connect-src 'self' https://*.open-meteo.com https://photon.komoot.io https://api.bigdatacloud.net https://get.geojs.io; "
-        "manifest-src 'self'; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'; "
-        "object-src 'none'; "
-        "upgrade-insecure-requests;"
+    is_secure = (
+        request.is_secure or
+        (app.testing and request.headers.get("X-Forwarded-Proto") == "https") or
+        request.headers.get("X-Forwarded-Proto") == "https"
     )
+    if is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: https: blob:",
+        "connect-src 'self' https://*.open-meteo.com https://photon.komoot.io https://api.bigdatacloud.net https://get.geojs.io",
+        "manifest-src 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "object-src 'none'",
+    ]
+    if is_secure:
+        csp_directives.append("upgrade-insecure-requests")
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives) + ";"
     return response
 
 

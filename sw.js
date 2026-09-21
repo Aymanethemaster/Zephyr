@@ -8,8 +8,8 @@
  * - Clean lifecycle upgrades (skipWaiting, clients.claim, cache pruning)
  */
 
-const STATIC_CACHE = 'zephyr-static-v1.5';
-const DATA_CACHE = 'zephyr-data-v1';
+const STATIC_CACHE = 'zephyr-static-v2.0';
+const DATA_CACHE = 'zephyr-data-v2.0';
 const MAX_DATA_CACHE_ITEMS = 50;
 
 const PRECACHE_URLS = [
@@ -124,34 +124,23 @@ async function trimCache(cacheName, maxItems) {
 
 // Install: pre-cache static application shell and vector assets
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
-      .catch((err) => console.warn('Service worker precache failed:', err))
+      .catch((err) => console.warn('Service worker precache warning:', err))
   );
 });
 
-// Activate: clean up outdated static shell caches and legacy unpartitioned caches, preserving dynamic offline data
+// Activate: purge any caches that are not the current version, then claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
         return Promise.all(
-          cacheNames.map((name) => {
-            // Delete outdated static caches
-            if (name.startsWith('zephyr-static-') && name !== STATIC_CACHE) {
-              return caches.delete(name);
-            }
-            // Delete legacy unpartitioned caches (e.g., zephyr-v1.4)
-            if (name.startsWith('zephyr-v') && name !== STATIC_CACHE && name !== DATA_CACHE) {
-              return caches.delete(name);
-            }
-            // Delete outdated data caches if DATA_CACHE schema/version is updated
-            if (name.startsWith('zephyr-data-') && name !== DATA_CACHE) {
-              return caches.delete(name);
-            }
-          })
+          cacheNames
+            .filter((name) => name !== STATIC_CACHE && name !== DATA_CACHE)
+            .map((name) => caches.delete(name))
         );
       })
       .then(() => self.clients.claim())

@@ -21,10 +21,35 @@
 
   <!-- App Stylesheet -->
   <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* Inline safety rules ensuring skip link is visually offscreen until explicitly focused */
+    .skip-link {
+      position: absolute !important;
+      left: -9999px !important;
+      top: -9999px !important;
+      z-index: 9999;
+    }
+    .skip-link:focus {
+      left: 1.5rem !important;
+      top: 1.5rem !important;
+      transform: none !important;
+      clip: auto !important;
+      clip-path: none !important;
+      overflow: visible !important;
+      white-space: normal !important;
+      background: #0f172a !important;
+      color: #38bdf8 !important;
+      padding: 0.75rem 1.5rem !important;
+      border: 2px solid #38bdf8 !important;
+      border-radius: 0.75rem !important;
+      text-decoration: none !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    }
+  </style>
 </head>
 <body>
   <!-- Skip link for keyboard users (WCAG 2.4.1) -->
-  <a href="#main-content" class="skip-link">Skip to weather forecast</a>
+  <a href="#main-content" class="skip-link" style="position:absolute;left:-9999px;top:-9999px;">Skip to weather forecast</a>
 
   <!-- Ambient Atmospheric Glow Orbs -->
   <div class="ambient-glow" aria-hidden="true">
