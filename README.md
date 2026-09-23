@@ -1,113 +1,114 @@
 # Zephyr
-#### Video Demo: https://youtu.be/WSgSxj3xZZM
-#### Description:
 
-Zephyr is a lightweight, real-time weather web application and Progressive Web App (PWA) built with Python (Flask) on the backend and vanilla HTML, CSS, and modern JavaScript on the frontend. The application delivers comprehensive weather forecasts, atmospheric metrics, and astronomical calculations without requiring any user registration, API keys, or paid commercial subscriptions.
+A lightweight, real-time weather web application and Progressive Web App (PWA) built with **Python (Flask)** and **vanilla HTML, CSS, and JavaScript**. Zero API keys, zero user tracking, and instant offline access.
 
-### Overview and Motivation
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://zephyr-mocha.vercel.app)
+[![Video Demo](https://img.shields.io/badge/demo-youtube-red.svg)](https://youtu.be/WSgSxj3xZZM)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 
-Most modern web applications rely heavily on massive frontend frameworks, complex build tooling, and external APIs protected by commercial paywalls or restrictive rate limits. The objective of Zephyr was to build an authentic, production-grade weather platform that remains fast, completely free of third-party API keys, and capable of operating both as a full-stack Flask application and as a standalone client-side single-page application.
+---
 
-Zephyr aggregates real-time meteorological observations, 24-hour hourly forecasts, and 7-day extended forecasts by communicating directly with open, public data endpoints. To ensure high resilience, the platform incorporates automated fallbacks across every layer of its architecture, including dual geocoding providers, dual IP lookup services, in-memory caching, client-side offline storage, and a Progressive Web App Service Worker.
+## Highlights
 
-The application operates in a hybrid architectural mode:
-1. **Full-Stack Mode**: When hosted with the Python Flask backend, it provides server-side proxying, thread-safe in-memory caching, sliding-window rate limiting, and HTTP security headers.
-2. **Decoupled Client Mode**: If deployed to a static host (such as GitHub Pages or Vercel) where the Python backend is absent, the client-side API layer automatically falls back to querying upstream public APIs directly without breaking functionality.
+- **Live & Extended Forecasts**: Current conditions, 24-hour hourly timeline, and 7-day outlook with proportional temperature range bars.
+- **Atmospheric Intelligence**: UV Index risk scale, Beaufort wind force gauge, dew point humidity comfort, barometric pressure, lunar phase, and Air Quality Index (AQI).
+- **Zero API Keys Required**: Powered entirely by open public endpoints (Open-Meteo, OpenStreetMap Photon, BigDataCloud, GeoJS).
+- **Hybrid Architecture**:
+  - **Full-Stack Mode**: Flask backend with thread-safe in-memory LRU cache, sliding-window rate limiting, and circuit breaker protection.
+  - **Decoupled Client Mode**: Works as a standalone client-side PWA on static hosts (Vercel, GitHub Pages) with direct API fallbacks.
+- **Offline PWA Support**: Service Worker with partitioned caches and full offline precache for 120+ animated weather SVG icons.
+- **Accessible & Responsive**: Keyboard shortcuts (`/` or `Ctrl+K` for search, `U` for units), WAI-ARIA 1.2 combobox, WCAG 2.1 AA contrast, and reduced-motion support.
 
-### Key Features and Functionality
+---
 
-- **Live Meteorological Observations**: Real-time display of current temperature, apparent feels-like temperature, condition summaries, relative humidity, wind velocity, and daily high and low ranges.
-- **24-Hour Hourly Forecast**: A horizontal timeline strip detailing upcoming hourly temperatures, precipitation probabilities, condition summaries, and wind speeds, complete with left and right scroll navigation controls.
-- **7-Day Daily Forecast**: An 8-day outlook featuring proportional temperature range bars that scale dynamically against the entire week's minimum and maximum recorded values, providing immediate visual contrast of temperature shifts.
-- **Atmospheric and Environmental Metrics**:
-  - **UV Index**: Live UV radiation rating with exposure safety advice, gauge fills, and color-coded risk levels.
-  - **Wind & Beaufort Scale**: Wind direction degrees and cardinal names mapped directly to the international Beaufort wind force scale (0 to 12) with dedicated vector gauges.
-  - **Humidity & Dew Point**: Relative moisture percentages accompanied by calculated dew point values and human comfort descriptions.
-  - **Pressure & Visibility**: Barometric pressure readings and optical viewing distance estimates.
-  - **Solar & Ephemeris**: Dynamic calculation of daylight progression percentages, sunrise and sunset times, and the current lunar phase using astronomical position algorithms.
-  - **Air Quality Index (AQI)**: United States and European AQI metrics evaluating particulate matter (PM2.5, PM10, ozone, carbon monoxide, nitrogen dioxide) and environmental health safety.
-- **Dual Location Services**: On every load — first visit or refresh — the app always resolves the user's current location. An instant IP-based estimate is shown immediately, then silently upgraded to precise GPS when permission was previously granted; first-time visitors get a one-time GPS prompt with the IP location as a seamless fallback. A global city search engine with typo-tolerant fuzzy matching is also included.
-- **Offline PWA Resilience**: Full Service Worker caching enabling instantaneous application shell loading and offline access to recently viewed weather forecasts.
-- **User Personalization**: Instant toggle between Celsius and Fahrenheit units, persistent search history, and a star-based favorite locations system saved locally in the browser.
+## Tech Stack
 
-### Project Files and Architecture
+| Layer | Technologies |
+|:---|:---|
+| **Backend** | Python 3.10+, Flask, Requests (HTTP Pooling), Gunicorn |
+| **Frontend** | Vanilla JavaScript (ES Modules), Vanilla CSS (Glassmorphism), Semantic HTML5 |
+| **PWA** | Service Worker (Stale-While-Revalidate, Cache Partitioning), Web App Manifest |
+| **APIs** | Open-Meteo (Weather & AQI), Photon Komoot (Fuzzy Geocoding), BigDataCloud & GeoJS (IP / Reverse Geo) |
 
-Below is a detailed breakdown of the files developed for this project and their respective roles:
+---
 
-- **`app.py`**: The core Flask backend server. It exposes reverse-proxy endpoints (`/api/weather`, `/api/geocoding`, `/api/reverse-geocode`, `/api/ip-location`, `/api/air-quality`, `/api/health`). It attaches HTTP security headers (`nosniff`, `DENY` framing, strict referrer policies, permissions policies), handles thread-safe in-memory caching protected by mutex locks (`CACHE_LOCK`) to prevent upstream API abuse, and enforces a sliding-window rate limit per client IP address. It also includes automatic background pruning for stale cache entries and rate-limit tracking buckets to preserve memory.
-- **`index.html`**: The semantic HTML5 foundation of the user interface. It defines the application layout, search combobox, hero cards, hourly timeline container, daily forecast list, and atmospheric gauge grids with full WAI-ARIA accessibility roles (`role="combobox"`, `role="listbox"`, `role="meter"`, `role="alert"`, `role="status"`).
-- **`sw.js`**: The Progressive Web App Service Worker. It pre-caches core application assets and SVG vectors upon installation, applies a cache-first strategy for static files, and uses a network-first strategy with cache fallback for weather API calls.
-- **`static/css/style.css`**: The complete visual design system. Written in vanilla CSS without external CSS frameworks, it implements a dark slate glassmorphism aesthetic, subtle ambient background glow animations, responsive breakpoints for desktop and mobile, and a `prefers-reduced-motion` media query for accessibility.
-- **`static/js/app.js`**: The primary client-side application controller. It manages state transitions, keyboard shortcuts (`/` or `Ctrl+K` for search, `U` for units), event listeners, geolocation workflows, local storage persistence, and DOM updates. It includes a `SafeStorage` wrapper that prevents crashes in private browsing mode or storage quota limits.
-- **`static/js/weather-api.js`**: The network client module. It orchestrates API communications by querying the local Flask proxy first and seamlessly falling back to direct public endpoints if running in a static environment. All requests implement `AbortController` timeouts and signal cancellation to prevent race conditions.
-- **`static/js/utils.js`**: A modular collection of pure utility functions handling WMO weather code translations, unit conversions, lunar phase tracking, the Beaufort wind scale, and sun angle calculations.
-- **`static/js/weather-params.json`**: A shared JSON configuration file defining the exact query parameters requested from Open-Meteo, guaranteeing data consistency between backend and frontend.
-- **`static/manifest.json`**: The PWA web application manifest configuring theme colors, standalone display mode, and application launcher icons for mobile devices.
-- **`tests/test_app.py`**: A comprehensive test suite containing 35 automated unit and integration tests using pytest (47 total across Python and Node). It validates caching logic, cache expiration, rate limiting, security headers, geocoding fallbacks, and error scenarios.
-- **`requirements.txt` & `requirements-dev.txt`**: Dependency manifests listing production libraries (Flask, Requests, Gunicorn) and development testing packages (pytest).
-- **`pytest.ini`**: Configuration file setting pythonpath and test directory discovery rules.
-- **`Procfile` & `vercel.json`**: Deployment manifests facilitating cloud hosting on both Python WSGI platforms (Heroku, Render) and static hosting providers (Vercel).
+## Quick Start
 
-### Design Choices and Trade-Offs
-
-During the design and implementation of Zephyr, several architectural choices were evaluated:
-
-1. **Vanilla JavaScript and CSS vs. Frameworks**: Rather than adopting React, Next.js, or Tailwind CSS, vanilla web standards were chosen. This decision eliminated heavy build tooling, kept bundle sizes minimal, allowed instant browser loading, and demonstrated mastery of core web technologies.
-2. **In-Memory Caching vs. Database**: Because weather and geocoding data are ephemeral and externally sourced, an in-memory thread-safe dictionary with TTL expiration was selected over an external database like SQLite or PostgreSQL. This reduced latency to near-zero and eliminated operational database overhead. **Note:** because the cache and rate limiter live in process memory, the app is deployed with a single Gunicorn worker (`--workers 1 --threads 4`); multi-worker or multi-instance scaling would require a shared store such as Redis for consistent caching and rate limiting.
-3. **Dual-Mode Hybrid Architecture**: By enabling `weather-api.js` to communicate with both the Flask backend proxy and directly with public APIs, Zephyr achieves complete deployment independence. It can run as a secure full-stack server or as a static client-side web app without breaking functionality.
-4. **Typo-Tolerant Geocoding Fallback**: Standard geocoding services often fail when user input contains minor spelling errors. Zephyr addresses this by attempting Open-Meteo prefix matching first and falling back to OpenStreetMap Photon for fuzzy multilingual resolution while excluding commercial points of interest.
-5. **Accessibility and Motion Comfort**: The application provides keyboard accessibility, high-contrast readable text tokens conforming to WCAG standards, and a complete reduced-motion mode that eliminates ambient glow movement and transitions for sensitive users.
-
-### Getting Started
-
-#### Prerequisites
-
+### Prerequisites
 - Python 3.10 or higher
-- pip package manager
+- pip
 
-#### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Aymanethemaster/Zephyr.git
-   cd Zephyr
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Run the development server:
-   ```bash
-   python app.py
-   ```
-
-4. Open `http://127.0.0.1:5000` in your web browser.
-
-#### Environment Variables
-
-The backend is configured entirely through optional environment variables (sensible defaults are used for local development):
-
-| Variable | Purpose | Default |
-|:---|:---|:---|
-| `ALLOWED_ORIGINS` | Comma-separated list of origins permitted to call `/api/*` (strict Origin/Fetch-Metadata verification). **Set this in production** — when unset, the proxy is permissive for local development. | *(unset = permissive)* |
-| `BEHIND_PROXY` | Set to `1` when deployed behind a trusted reverse proxy (e.g. Vercel) so `X-Forwarded-For` is honored and rate limiting keys on the real visitor IP. | `0` |
-| `PROXY_HOPS` | Explicit number of trusted proxy hops (overrides `BEHIND_PROXY`). | `0` |
-| `PORT` | Port for the development server. | `5000` |
-| `FLASK_DEBUG` | Set to `1` to enable Flask debug mode (never in production). | off |
-
-On Vercel, `ALLOWED_ORIGINS` and `BEHIND_PROXY` are already provisioned via the `env` block in `vercel.json`. To use a custom domain, add it to `ALLOWED_ORIGINS` in the Vercel project settings (dashboard values take precedence).
-
-#### Running Tests
-
-To run the automated test suite:
-
+### 1. Clone the repository
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest
+git clone https://github.com/Aymanethemaster/Zephyr.git
+cd Zephyr
 ```
 
-### License
+### 2. Install dependencies
+```bash
+pip install -r requirements.txt
+```
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+### 3. Run the application
+```bash
+python app.py
+```
+Open **http://127.0.0.1:5000** in your browser.
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|:---|:---|
+| `/` or `Ctrl + K` | Focus search bar |
+| `U` | Toggle temperature units (°C / °F) |
+| `↑` / `↓` | Navigate autocomplete suggestions |
+| `Enter` | Select location |
+| `Delete` / `Backspace` | Remove highlighted favorite or recent search |
+| `Escape` | Close search dropdown |
+
+---
+
+## Configuration
+
+All configuration is handled via optional environment variables:
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for `/api/*` | *(permissive for local dev)* |
+| `BEHIND_PROXY` | Set to `1` when deployed behind a reverse proxy (e.g., Vercel, Render) | `0` |
+| `PORT` | Local server port | `5000` |
+| `FLASK_DEBUG` | Set to `1` for Flask debug mode | `0` |
+
+---
+
+## Running Tests
+
+Zephyr includes automated test suites covering concurrency, caching, rate limiting, and accessibility:
+
+```bash
+# Python tests (70 tests)
+pip install -r requirements-dev.txt
+python -m pytest
+
+# Node.js tests (35 tests)
+node tests/test_utils.mjs
+node tests/test_m2_stress.mjs
+node tests/test_m2_sw_a11y_stress.mjs
+```
+
+---
+
+## Author
+
+Created by [**Aiman Mokhtari (@Aymanethemaster)**](https://github.com/Aymanethemaster).
+
+Repository: [https://github.com/Aymanethemaster/Zephyr](https://github.com/Aymanethemaster/Zephyr)
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
