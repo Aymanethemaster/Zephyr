@@ -331,7 +331,7 @@ def clean_location_name(name_str):
         return ''
     first = str(name_str).split('/')[0].split(';')[0].strip()
     # Extract leading Latin/extended-Latin segment if present (e.g. "Frankfurt (Oder)" or "Tangier طنجة")
-    match = re.match(r'^[\w\s\-\.\'\(\)\u00C0-\u024F]+', first)
+    match = re.match(r'^[\w\s\-\.\'\(\)\u00C0-\u024F]+', first, re.ASCII)
     if match and len(match.group(0).strip()) >= 2:
         return match.group(0).strip()
     return first
