@@ -43,6 +43,7 @@ jobs:
 
   deploy-smoke:
     name: Post-Deploy Smoke Test (production)
+    needs: test
     # Runs only after a push to main; gives Vercel time to finish deploying,
     # then fails the build if any critical asset is not served (regression
     # guard for the static-asset 404 incident).
@@ -56,9 +57,9 @@ jobs:
 
           # Poll until the new deployment is live (up to ~5 minutes)
           for attempt in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/sw.js")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/health")
             if [ "$code" = "200" ]; then break; fi
-            echo "Waiting for deployment... (attempt $attempt, /sw.js -> $code)"
+            echo "Waiting for deployment... (attempt $attempt, /api/health -> $code)"
             sleep 10
           done
 
