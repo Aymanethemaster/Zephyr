@@ -1,11 +1,15 @@
 """M1 adversarial stress tests: concurrency, rate-limit floods, circuit-breaker
 stampedes, and proxy / header edge cases."""
+import os
+import sys
 import threading
 import time
 from unittest.mock import patch, MagicMock
 
 import pytest
 import requests
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import app as zephyr_app
 from app import (

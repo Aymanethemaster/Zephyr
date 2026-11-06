@@ -1,10 +1,13 @@
 import json
 import os
+import sys
 import time
 from unittest.mock import patch, MagicMock
 
 import pytest
 import requests
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import app as zephyr_app
 from app import (
