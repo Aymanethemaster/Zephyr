@@ -68,6 +68,8 @@ test('getWindDirection: maps compass degrees to 16 cardinal points', () => {
   assert.equal(getWindDirection(90), 'E');
   assert.equal(getWindDirection(180), 'S');
   assert.equal(getWindDirection(270), 'W');
+  assert.equal(getWindDirection(-90), 'W');
+  assert.equal(getWindDirection(-45), 'NW');
   assert.equal(getWindDirection(45), 'NE');
   assert.equal(getWindDirection(null), 'N/A');
   assert.equal(getWindDirection(NaN), 'N/A');
@@ -76,6 +78,8 @@ test('getWindDirection: maps compass degrees to 16 cardinal points', () => {
 test('getBeaufortScale & getBeaufortName: maps km/h to scale and names', () => {
   assert.equal(getBeaufortScale(0), 0);
   assert.equal(getBeaufortName(0), 'Calm');
+  assert.equal(getBeaufortScale(5.4), 1);
+  assert.equal(getBeaufortScale(11.4), 2);
   assert.equal(getBeaufortScale(15), 3);
   assert.equal(getBeaufortName(3), 'Gentle Breeze');
   assert.equal(getBeaufortScale(130), 12);
@@ -89,6 +93,7 @@ test('getUvRisk: calculates correct risk levels and advice', () => {
   assert.equal(getUvRisk(9).text, 'Very High');
   assert.equal(getUvRisk(12).text, 'Extreme');
   assert.equal(getUvRisk(null).text, 'Unknown');
+  assert.equal(getUvRisk(null).advice, 'UV index data unavailable');
 });
 
 test('getAqiDetails: maps AQI numbers to descriptions and colors', () => {

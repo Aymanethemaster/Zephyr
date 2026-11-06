@@ -112,7 +112,8 @@ export function formatVisibility(meters, unit = 'C') {
 export function getWindDirection(deg) {
   if (deg === null || deg === undefined || isNaN(deg)) return 'N/A';
   const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-  const index = Math.round(((deg % 360) / 22.5)) % 16;
+  const normalized = ((deg % 360) + 360) % 360;
+  const index = Math.round(normalized / 22.5) % 16;
   return directions[index];
 }
 
@@ -120,19 +121,19 @@ export function getWindDirection(deg) {
  * Maps wind speed in km/h to Beaufort scale (0 - 12)
  */
 export function getBeaufortScale(kmh) {
-  if (!kmh || isNaN(kmh)) return 0;
-  if (kmh < 1) return 0;
-  if (kmh <= 5) return 1;
-  if (kmh <= 11) return 2;
-  if (kmh <= 19) return 3;
-  if (kmh <= 28) return 4;
-  if (kmh <= 38) return 5;
-  if (kmh <= 49) return 6;
-  if (kmh <= 61) return 7;
-  if (kmh <= 74) return 8;
-  if (kmh <= 88) return 9;
-  if (kmh <= 102) return 10;
-  if (kmh <= 117) return 11;
+  if (kmh === null || kmh === undefined || isNaN(kmh) || kmh < 1) return 0;
+  const v = Math.round(kmh);
+  if (v <= 5) return 1;
+  if (v <= 11) return 2;
+  if (v <= 19) return 3;
+  if (v <= 28) return 4;
+  if (v <= 38) return 5;
+  if (v <= 49) return 6;
+  if (v <= 61) return 7;
+  if (v <= 74) return 8;
+  if (v <= 88) return 9;
+  if (v <= 102) return 10;
+  if (v <= 117) return 11;
   return 12;
 }
 
@@ -157,7 +158,9 @@ export function getBeaufortName(scale) {
 }
 
 export function getUvRisk(uv) {
-  if (uv === null || uv === undefined || isNaN(uv)) return { text: 'Unknown', color: '#94a3b8', level: 0 };
+  if (uv === null || uv === undefined || isNaN(uv)) {
+    return { text: 'Unknown', color: '#94a3b8', level: 0, advice: 'UV index data unavailable' };
+  }
   const rounded = Math.round(uv * 10) / 10;
   if (rounded <= 2) return { text: 'Low', color: '#4ade80', level: 1, advice: 'Minimal sun protection needed' };
   if (rounded <= 5) return { text: 'Moderate', color: '#facc15', level: 2, advice: 'Wear sunglasses & SPF 30+' };

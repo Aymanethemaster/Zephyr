@@ -1,0 +1,7 @@
+{
+  "name": "Zephyr",
+  "description": "A fast, sleek, zero-API-key weather application with authentic animated Meteocons, 24-hour hourly forecasts, 7-day daily forecasts, and atmospheric metrics.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

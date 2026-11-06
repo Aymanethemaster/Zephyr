@@ -252,7 +252,7 @@ export class WeatherApi {
       const gResp = await this._fetchWithTimeout('https://get.geojs.io/v1/ip/geo.json', 3500, signal);
       if (gResp.ok) {
         const data = await gResp.json();
-        if (data && data.latitude && data.longitude) {
+        if (data && data.latitude !== undefined && data.latitude !== null && data.longitude !== undefined && data.longitude !== null) {
           const city = data.city || data.region || data.country || 'Current Location';
           return {
             name: city,

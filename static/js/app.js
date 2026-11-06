@@ -1037,6 +1037,17 @@ class WeatherApp {
     this.heroWindEl.textContent = formatSpeed(current.wind_speed_10m, this.unit);
     this.updateFavoriteButtonUI();
 
+    // Apply atmospheric theme class for dynamic ambient glow
+    if (typeof document !== 'undefined' && document.body && weatherInfo.theme) {
+      const themeClasses = [
+        'theme-clear-day', 'theme-clear-night', 'theme-cloudy',
+        'theme-cloudy-night', 'theme-fog', 'theme-rain',
+        'theme-snow', 'theme-thunderstorm'
+      ];
+      document.body.classList.remove(...themeClasses);
+      document.body.classList.add(weatherInfo.theme);
+    }
+
     // Trigger subtle data reveal animation
     const heroCard = document.getElementById('hero-card');
     if (heroCard) {
@@ -1083,7 +1094,7 @@ class WeatherApp {
       const timeStr = i === 0 ? 'Now' : formatTimeOnly(next24Times[i]);
       formattedTimes.push(timeStr);
       const tempVal = formatTemp(next24Temps[i], this.unit);
-      const rainChance = next24Precip[i] || 0;
+      const rainChance = next24Precip[i] ?? 0;
       const info = getWeatherInfo(next24Codes[i], next24IsDay[i]);
       const windSpd = formatSpeed(next24Winds[i], this.unit);
 
@@ -1139,7 +1150,7 @@ class WeatherApp {
       const maxValNum = convertTemp(daily.temperature_2m_max?.[i], this.unit);
       const minVal = `${minValNum}°`;
       const maxVal = `${maxValNum}°`;
-      const precipProb = daily.precipitation_probability_max?.[i] || 0;
+      const precipProb = daily.precipitation_probability_max?.[i] ?? 0;
 
       // Calculate bar fill offset & width in percentage
       const barLeft = Math.max(0, Math.min(90, Math.round(((minValNum - weekMin) / weekSpan) * 100)));
@@ -1148,7 +1159,7 @@ class WeatherApp {
 
       const row = document.createElement('div');
       row.className = 'daily-row';
-      row.setAttribute('title', `${dayName}: ${info.desc}, Low ${minVal}, High ${maxVal}`);
+      row.setAttribute('title', `${dayName}: ${info.desc}, Low ${minVal}, High ${maxVal}${precipProb > 0 ? `, ${precipProb}% precip` : ''}`);
       row.innerHTML = `
         <div class="daily-day-group">
           <span class="daily-day-name">${dayName}</span>
@@ -1156,6 +1167,7 @@ class WeatherApp {
         </div>
         <div class="daily-icon-col" title="${escapeHtml(info.desc)}">
           ${getSvgIcon(info.iconKey, true, 28, 'lazy')}
+          ${precipProb >= 15 ? `<span class="daily-precip-prob">${precipProb}%</span>` : ''}
         </div>
         <div class="temp-bar-container" aria-label="Low ${minVal}, High ${maxVal}">
           <span class="daily-min">${minVal}</span>
@@ -1214,10 +1226,10 @@ class WeatherApp {
 
     // 2. Wind & Beaufort Scale
     this.windValEl.textContent = formatSpeed(current.wind_speed_10m, this.unit);
-    const gusts = current.wind_gusts_10m ? formatSpeed(current.wind_gusts_10m, this.unit) : null;
+    const gusts = typeof current.wind_gusts_10m === 'number' ? formatSpeed(current.wind_gusts_10m, this.unit) : null;
     this.windGustsEl.textContent = gusts ? `Peak gusts up to ${gusts}` : 'Steady atmospheric flow';
     const directionStr = getWindDirection(current.wind_direction_10m);
-    this.windDirectionEl.textContent = `${directionStr} ${current.wind_direction_10m || 0}°`;
+    this.windDirectionEl.textContent = `${directionStr} ${current.wind_direction_10m ?? 0}°`;
     const beaufort = getBeaufortScale(current.wind_speed_10m);
     if (this.windScaleNameEl) {
       this.windScaleNameEl.textContent = getBeaufortName(beaufort);
@@ -1252,12 +1264,12 @@ class WeatherApp {
     }
 
     // 4. Pressure & Visibility
-    const visibilityMeters = hourly?.visibility?.[hourIdx] || 10000;
+    const visibilityMeters = hourly?.visibility?.[hourIdx] ?? 10000;
     this.visibilityValEl.textContent = formatVisibility(visibilityMeters, this.unit);
-    const pressureVal = current.pressure_msl || current.surface_pressure;
+    const pressureVal = current.pressure_msl ?? current.surface_pressure;
     this.pressureValEl.textContent = formatPressure(pressureVal, this.unit);
     if (this.pressureIconImg) {
-      const pressureFileName = (pressureVal && pressureVal >= 1013)
+      const pressureFileName = (typeof pressureVal === 'number' && pressureVal >= 1013)
         ? 'pressure-high.svg'
         : 'barometer.svg';
       this.setMetricIcon(this.pressureIconImg, pressureFileName, 'barometer.svg');
@@ -1269,7 +1281,7 @@ class WeatherApp {
     }
     const pressureFill = document.getElementById('pressure-gauge-fill');
     const pressureMeter = document.getElementById('pressure-meter');
-    if (pressureVal) {
+    if (typeof pressureVal === 'number') {
       if (pressureFill) pressureFill.style.transform = `scaleX(${Math.min(1, Math.max(0, (pressureVal - 970) / (1050 - 970))).toFixed(3)})`;
       if (pressureMeter) pressureMeter.setAttribute('aria-valuenow', String(Math.round(pressureVal)));
     }
@@ -1303,13 +1315,13 @@ class WeatherApp {
     }
 
     // 6. Air Quality
-    const aqiVal = this.airQualityData?.current?.us_aqi || this.airQualityData?.current?.european_aqi || null;
+    const aqiVal = this.airQualityData?.current?.us_aqi ?? this.airQualityData?.current?.european_aqi ?? null;
     const aqiInfo = getAqiDetails(aqiVal);
     this.aqiValEl.textContent = aqiVal !== null ? aqiVal : '--';
     this.aqiStatusEl.textContent = aqiInfo.text;
     this.aqiStatusEl.style.color = aqiInfo.color;
     if (this.aqiIconImg) {
-      const aqiFileName = (aqiVal && aqiVal > 100)
+      const aqiFileName = (typeof aqiVal === 'number' && aqiVal > 100)
         ? 'dust-wind.svg'
         : 'dust-day.svg';
       this.setMetricIcon(this.aqiIconImg, aqiFileName, 'dust.svg');

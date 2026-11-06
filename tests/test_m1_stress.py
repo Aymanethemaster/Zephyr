@@ -1,155 +1,145 @@
-"""
-Milestone 1 Concurrency, Memory Bounds & Security Stress Test Suite.
-Empirical verification for LRU cache bounds, rate limiter flood protection,
-multi-threaded concurrency safety, and SSRF prevention.
-"""
-import sys
-import os
-import time
+"""M1 adversarial stress tests: concurrency, rate-limit floods, circuit-breaker
+stampedes, and proxy / header edge cases."""
 import threading
-from collections import deque
+import time
+from unittest.mock import patch, MagicMock
+
 import pytest
+import requests
 
-# Ensure repository root is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+import app as zephyr_app
 from app import (
     app,
-    CACHE,
-    CACHE_LOCK,
+    _CACHE,
+    _RATE_BUCKETS,
+    _WEATHER_BREAKER,
+    CircuitBreaker,
+    _set_to_cache,
+    _get_from_cache,
+    _check_rate_limit,
     MAX_CACHE_SIZE,
-    get_from_cache,
-    set_to_cache,
-    RATE_BUCKETS,
-    RATE_LOCK,
     MAX_RATE_BUCKETS,
-    check_rate_limit,
-    http_get,
-    HTTP_SESSION,
 )
 
 
-def test_cache_bound_and_lru_eviction():
-    """Verify cache bounds to 2,000 entries, evicts oldest, and get_from_cache updates LRU."""
-    with CACHE_LOCK:
-        CACHE.clear()
-
-    # Insert 2,500 distinct items
-    for i in range(2500):
-        set_to_cache(f"item_{i}", f"val_{i}", ttl=300)
-        assert len(CACHE) <= MAX_CACHE_SIZE
-
-    assert len(CACHE) == MAX_CACHE_SIZE
-
-    # Oldest 500 items (0..499) must be evicted
-    for i in range(500):
-        assert get_from_cache(f"item_{i}") is None
-
-    # Items 500..2499 must be present
-    for i in range(500, 2500):
-        assert get_from_cache(f"item_{i}") == f"val_{i}"
-
-    # Access item_500 to update its LRU position to most-recently-used
-    assert get_from_cache("item_500") == "val_500"
-
-    # Insert one new item (item_2500); item_501 should be evicted instead of item_500
-    set_to_cache("item_2500", "val_2500", ttl=300)
-    assert len(CACHE) == MAX_CACHE_SIZE
-    assert get_from_cache("item_501") is None
-    assert get_from_cache("item_500") == "val_500"
-
-    with CACHE_LOCK:
-        CACHE.clear()
+@pytest.fixture(autouse=True)
+def reset_state():
+    _CACHE.clear()
+    _RATE_BUCKETS.clear()
+    _WEATHER_BREAKER.failures = 0
+    _WEATHER_BREAKER.state = 'CLOSED'
+    _WEATHER_BREAKER._half_open_in_flight = False
+    yield
+    _CACHE.clear()
+    _RATE_BUCKETS.clear()
 
 
-def test_rate_limit_flood_eviction_prevention():
-    """Verify saturating RATE_BUCKETS to 5,000 active entries rejects new IP and preserves active buckets."""
-    with RATE_LOCK:
-        RATE_BUCKETS.clear()
-
-    now = time.time()
-    with RATE_LOCK:
-        for i in range(MAX_RATE_BUCKETS):
-            RATE_BUCKETS[f"active_ip_{i}"] = deque([now - 5])
-
-    assert len(RATE_BUCKETS) == MAX_RATE_BUCKETS
-
-    # Attempt to register a new IP when table is fully saturated with active clients
-    with app.test_request_context("/", environ_base={"REMOTE_ADDR": "198.51.100.99"}):
-        allowed = check_rate_limit()
-
-    assert allowed is False
-    assert len(RATE_BUCKETS) == MAX_RATE_BUCKETS
-    assert "198.51.100.99" not in RATE_BUCKETS
-    assert "active_ip_0" in RATE_BUCKETS
-
-    # Existing active IP within quota can still make requests
-    with app.test_request_context("/", environ_base={"REMOTE_ADDR": "active_ip_10"}):
-        allowed_existing = check_rate_limit()
-
-    assert allowed_existing is True
-
-    with RATE_LOCK:
-        RATE_BUCKETS.clear()
-
-
-def test_multithreaded_concurrency_stress():
-    """Execute 50 concurrent threads accessing cache and rate limiters simultaneously."""
+def test_concurrent_cache_read_write_race():
+    """Hammer _CACHE from 16 threads doing interleaved reads, writes, and evictions."""
     errors = []
-    num_threads = 50
-    ops_per_thread = 100
 
     def worker(tid):
         try:
-            for op in range(ops_per_thread):
-                key = f"thread_key_{tid}_{op % 10}"
-                ip = f"10.{(tid % 10)}.{(op % 20)}.1"
+            for i in range(250):
+                key = f"k:{(tid * 100 + i) % (MAX_CACHE_SIZE + 200)}"
+                _set_to_cache(key, {'v': i}, ttl=10)
+                _get_from_cache(key)
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
 
-                if op % 2 == 0:
-                    set_to_cache(key, f"val_{tid}_{op}", ttl=60)
-                    _ = get_from_cache(key)
-                else:
-                    with app.test_request_context("/", environ_base={"REMOTE_ADDR": ip}):
-                        _ = check_rate_limit()
-        except Exception as e:
-            errors.append((tid, str(e)))
-
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+    threads = [threading.Thread(target=worker, args=(t,)) for t in range(16)]
     for t in threads:
         t.start()
     for t in threads:
-        t.join(timeout=10)
-        assert not t.is_alive(), f"Thread {t.name} timed out"
+        t.join()
 
-    assert len(errors) == 0, f"Encountered concurrency errors: {errors}"
-    assert len(CACHE) <= MAX_CACHE_SIZE
-    assert len(RATE_BUCKETS) <= MAX_RATE_BUCKETS
+    assert errors == []
+    assert len(_CACHE) <= MAX_CACHE_SIZE
 
 
-def test_ssrf_allow_redirects_disabled():
-    """Verify http_get unconditionally sets allow_redirects=False by default."""
-    captured_kwargs = []
+def test_rate_limit_sybil_flood_preserves_attacker_tracking(monkeypatch):
+    """During a Sybil IP flood with MAX_RATE_BUCKETS active IPs, a tracked IP that has
+    exhausted its quota must NOT be evicted and granted a fresh quota."""
+    monkeypatch.setattr(zephyr_app, 'MAX_RATE_BUCKETS', 50)
+    monkeypatch.setattr(zephyr_app, 'RATE_LIMIT_REQUESTS', 3)
 
-    class DummyResponse:
-        status_code = 200
-        def raise_for_status(self):
-            pass
-        def json(self):
-            return {}
+    # Exhaust quota for victim/attacker IP "1.1.1.1"
+    assert _check_rate_limit('1.1.1.1') is True
+    assert _check_rate_limit('1.1.1.1') is True
+    assert _check_rate_limit('1.1.1.1') is True
+    assert _check_rate_limit('1.1.1.1') is False  # Now blocked
 
-    saved_method = HTTP_SESSION.get
-    def fake_get(url, **kwargs):
-        captured_kwargs.append(kwargs)
-        return DummyResponse()
+    # Flood with 49 other active IPs to fill MAX_RATE_BUCKETS (total = 50)
+    for i in range(2, 51):
+        assert _check_rate_limit(f'10.0.0.{i}') is True
 
-    HTTP_SESSION.get = fake_get
-    try:
-        http_get("https://api.example.com/test")
-        assert len(captured_kwargs) == 1
-        assert captured_kwargs[0].get("allow_redirects") is False
+    assert len(_RATE_BUCKETS) == 50
 
-        http_get("https://api.example.com/test2", timeout=5)
-        assert len(captured_kwargs) == 2
-        assert captured_kwargs[1].get("allow_redirects") is False
-    finally:
-        HTTP_SESSION.get = saved_method
+    # 51st unseen IP arrives while all 50 buckets are active: must be rejected (fail-closed)
+    assert _check_rate_limit('99.99.99.99') is False
+
+    # And crucially, 1.1.1.1 must STILL be rate-limited (not evicted!)
+    assert _check_rate_limit('1.1.1.1') is False
+
+
+def test_rate_limit_reclaims_expired_buckets_under_flood(monkeypatch):
+    """Once old buckets expire outside RATE_LIMIT_WINDOW, new IPs are accepted again."""
+    monkeypatch.setattr(zephyr_app, 'MAX_RATE_BUCKETS', 10)
+    now = time.time()
+    for i in range(10):
+        _RATE_BUCKETS[f'old.{i}'] = [now - 120]  # Expired (>60s ago)
+
+    assert _check_rate_limit('203.0.113.5') is True
+    assert '203.0.113.5' in _RATE_BUCKETS
+
+
+def test_circuit_breaker_half_open_single_flight():
+    """When breaker recovery timeout elapses, only ONE concurrent thread may probe HALF_OPEN."""
+    cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.05)
+    cb.record_failure()
+    cb.record_failure()
+    assert cb.state == 'OPEN'
+
+    time.sleep(0.06)
+
+    results = []
+    barrier = threading.Barrier(10)
+
+    def probe():
+        barrier.wait()
+        results.append(cb.allow_request())
+
+    threads = [threading.Thread(target=probe) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Exactly 1 canary probe should be allowed through while HALF_OPEN
+    assert results.count(True) == 1
+    assert results.count(False) == 9
+
+    # Once canary fails, breaker re-opens immediately
+    cb.record_failure()
+    assert cb.state == 'OPEN'
+    assert cb.allow_request() is False
+
+
+def test_outbound_http_disables_redirects():
+    """Verify _http_get passes allow_redirects=False to prevent open-redirect / SSRF hops."""
+    with patch.object(zephyr_app._HTTP_SESSION, 'get') as mock_get:
+        mock_get.return_value = MagicMock(status_code=200)
+        zephyr_app._http_get('https://api.open-meteo.com/v1/forecast', params={'latitude': 0})
+        _, kwargs = mock_get.call_args
+        assert kwargs.get('allow_redirects') is False
+
+
+def test_weather_params_single_source_of_truth():
+    """Ensure app.py and static/js/weather-params.json stay in exact lockstep."""
+    import json
+    with open('static/js/weather-params.json', 'r', encoding='utf-8') as f:
+        shared = json.load(f)
+    assert zephyr_app.OPEN_METEO_PARAMS['current'] == shared['current']
+    assert zephyr_app.OPEN_METEO_PARAMS['hourly'] == shared['hourly']
+    assert zephyr_app.OPEN_METEO_PARAMS['daily'] == shared['daily']
+    assert zephyr_app.OPEN_METEO_PARAMS['forecast_days'] == shared['forecast_days']

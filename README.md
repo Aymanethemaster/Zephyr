@@ -26,7 +26,7 @@ A lightweight, real-time weather web application and Progressive Web App (PWA) b
 
 | Layer | Technologies |
 |:---|:---|
-| **Backend** | Python 3.10+, Flask, Requests (HTTP Pooling), Gunicorn |
+| **Backend** | Python 3, Flask, Requests, Gunicorn |
 | **Frontend** | Vanilla JavaScript (ES Modules), Vanilla CSS (Glassmorphism), Semantic HTML5 |
 | **PWA** | Service Worker (Stale-While-Revalidate, Cache Partitioning), Web App Manifest |
 | **APIs** | Open-Meteo (Weather & AQI), Photon Komoot (Fuzzy Geocoding), BigDataCloud & GeoJS (IP / Reverse Geo) |
@@ -37,7 +37,6 @@ A lightweight, real-time weather web application and Progressive Web App (PWA) b
 
 ### Prerequisites
 - Python 3.10 or higher
-- pip
 
 ### 1. Clone the repository
 ```bash
@@ -45,8 +44,14 @@ git clone https://github.com/Aymanethemaster/Zephyr.git
 cd Zephyr
 ```
 
-### 2. Install dependencies
+### 2. Set up a virtual environment & install dependencies
 ```bash
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# macOS / Linux:
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
@@ -54,7 +59,7 @@ pip install -r requirements.txt
 ```bash
 python app.py
 ```
-Open **http://127.0.0.1:5000** in your browser.
+Open **http://localhost:5000** in your browser.
 
 ---
 
@@ -80,23 +85,23 @@ All configuration is handled via optional environment variables:
 | `ALLOWED_ORIGINS` | Comma-separated list of allowed origins for `/api/*` | *(permissive for local dev)* |
 | `BEHIND_PROXY` | Set to `1` when deployed behind a reverse proxy (e.g., Vercel, Render) | `0` |
 | `PORT` | Local server port | `5000` |
-| `FLASK_DEBUG` | Set to `1` for Flask debug mode | `0` |
+| `FLASK_DEBUG` | Enable debug mode (`1` or `true`) | `0` |
 
 ---
 
 ## Running Tests
 
-Zephyr includes automated test suites covering concurrency, caching, rate limiting, and accessibility:
+Zephyr includes automated test suites for both the Flask backend and Vanilla JS frontend utilities:
 
 ```bash
-# Python tests (70 tests)
+# Install development dependencies
 pip install -r requirements-dev.txt
-python -m pytest
 
-# Node.js tests (35 tests)
-node tests/test_utils.mjs
-node tests/test_m2_stress.mjs
-node tests/test_m2_sw_a11y_stress.mjs
+# Run backend tests (pytest)
+pytest -v
+
+# Run frontend unit, concurrency, and accessibility tests (Node.js)
+node --test tests/test_utils.mjs tests/test_m2_stress.mjs tests/test_m2_sw_a11y_stress.mjs
 ```
 
 ---

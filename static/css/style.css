@@ -1179,11 +1179,46 @@ body {
 
 .daily-icon-col {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  min-width: 38px;
+  gap: 1px;
   flex-shrink: 0;
+}
+
+.daily-precip-prob {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--accent-rain);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dynamic Atmospheric Theme Ambient Glow Variations */
+body.theme-clear-day {
+  --ambient-glow-1: rgba(245, 158, 11, 0.09);
+  --ambient-glow-2: rgba(56, 189, 248, 0.08);
+}
+
+body.theme-clear-night {
+  --ambient-glow-1: rgba(99, 102, 241, 0.09);
+  --ambient-glow-2: rgba(139, 92, 246, 0.06);
+}
+
+body.theme-rain {
+  --ambient-glow-1: rgba(56, 189, 248, 0.10);
+  --ambient-glow-2: rgba(59, 130, 246, 0.08);
+}
+
+body.theme-snow {
+  --ambient-glow-1: rgba(125, 211, 252, 0.10);
+  --ambient-glow-2: rgba(186, 230, 253, 0.07);
+}
+
+body.theme-thunderstorm {
+  --ambient-glow-1: rgba(168, 85, 247, 0.10);
+  --ambient-glow-2: rgba(56, 189, 248, 0.08);
 }
 
 .temp-bar-container {
@@ -1527,19 +1562,6 @@ body {
   filter: grayscale(0.25);
   pointer-events: none;
   transition: opacity 0.3s var(--ease-out-expo), filter 0.3s var(--ease-out-expo);
-}
-
-/* Visually Hidden Utility for Screen Readers */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 /* --------------------------------------------------------------------------
